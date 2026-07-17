@@ -47,8 +47,9 @@ PC → Pro Micro → TX15 Max(트레이너) → ELRS → Betaflight 관제 체�
 
 - [x] `BuddyBoxSitl` UDP 백엔드 (`buddybox/sitl.py` — SITL 포트 9004, 실물과 동일 API)
 - [x] WSL2 Ubuntu 24.04 설치
-- [ ] Gazebo Harmonic + Betaflight SITL + aeroloop_gazebo 빌드 (스크립트 실행 중)
-- [ ] autonomous_loop.py → SITL → Gazebo 가상 비행 검증
+- [x] Gazebo Harmonic + Betaflight SITL + aeroloop_gazebo 빌드 (`/opt/buddybox-sitl/`)
+- [x] Windows→SITL RC 경로 검증 (MSP_RC 판독 일치, PASS — WSL IP로 송신 필요)
+- [ ] autonomous_loop.py → SITL → Gazebo 가상 비행 검증 (Gazebo GUI 연동)
 - 상세: [sitl-gazebo.md](sitl-gazebo.md)
 
 ## 인프라
