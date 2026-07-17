@@ -44,7 +44,13 @@ def main():
         max_rate_per_s=2.0,    # 급격한 스틱 변화 방지
     )
 
-    backend = BuddyBoxSitl() if port == "sitl" else BuddyBox(port)
+    # WSL2 NAT 모드에선 UDP localhost 포워딩이 안 되므로 WSL IP를 지정해야 한다:
+    #   $env:BUDDYBOX_SITL_HOST = (wsl hostname -I).Trim().Split()[0]
+    if port == "sitl":
+        import os
+        backend = BuddyBoxSitl(host=os.environ.get("BUDDYBOX_SITL_HOST", "127.0.0.1"))
+    else:
+        backend = BuddyBox(port)
     with backend as bb:
         mode = "시뮬레이션" if bb.simulator else "실제 송신"
         print(f"모드: {mode} ({bb.port}), {LOOP_HZ}Hz 제어 루프 {DURATION_S}초")

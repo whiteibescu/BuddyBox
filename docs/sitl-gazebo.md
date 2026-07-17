@@ -33,8 +33,9 @@ wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/VisionWorkspace/BuddyBox/tools/sitl/s
 
 스크립트([tools/sitl/setup_wsl.sh](../tools/sitl/setup_wsl.sh))가 하는 일:
 1. Gazebo Harmonic 설치 (OSRF 공식 저장소)
-2. Betaflight 소스 클론 + `make TARGET=SITL` → `betaflight_SITL.elf`
+2. Betaflight 소스 클론 + `make TARGET=SITL` → `obj/betaflight_<버전>_SITL`
 3. [aeroloop_gazebo](https://github.com/betaflight/aeroloop_gazebo) (gz 브랜치) 플러그인 빌드
+   (`build_plugin.sh` 사용 → `plugins/build/libBetaflightPlugin.so`)
 
 설치 위치: WSL 내부 `/opt/buddybox-sitl/`
 
@@ -44,11 +45,11 @@ wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/VisionWorkspace/BuddyBox/tools/sitl/s
 
 ```bash
 # ① Gazebo (WSLg로 GUI 표시됨)
-export GZ_SIM_SYSTEM_PLUGIN_PATH=/opt/buddybox-sitl/aeroloop_gazebo/build
-gz sim -r /opt/buddybox-sitl/aeroloop_gazebo/worlds/<월드파일>.sdf
+export GZ_SIM_SYSTEM_PLUGIN_PATH=/opt/buddybox-sitl/aeroloop_gazebo/plugins/build
+gz sim -r /opt/buddybox-sitl/aeroloop_gazebo/worlds/quadcopter_test_harmonic.sdf
 
-# ② Betaflight SITL
-cd /opt/buddybox-sitl/betaflight && ./obj/main/betaflight_SITL.elf
+# ② Betaflight SITL (실행 파일명은 버전에 따라 다름 — obj/ 안의 *_SITL)
+cd /opt/buddybox-sitl/betaflight && ./obj/betaflight_*_SITL
 ```
 
 ```powershell
@@ -64,6 +65,21 @@ Betaflight Configurator 연결(설정 변경 시): `tcp://127.0.0.1:5761`
 - [ ] SITL 부팅 후 Configurator Receiver 탭에서 `autonomous_loop.py sitl` 채널 반응 확인
 - [ ] SITL에서 ARM 조건 설정(AUX 채널) 후 가상 이륙
 - [ ] 실물과 동일한 SafetyLimiter 한계로 비행 특성 확인
+
+## 검증 결과 (2026-07-18)
+
+Windows(BuddyBoxSitl) → WSL(Betaflight SITL) RC 경로 **end-to-end 검증 완료**:
+송신 AETR [1756, 1244, 988, 2012] → MSP_RC 판독값과 완전 일치 (PASS).
+
+**주의 — WSL2 UDP localhost**: NAT 모드에선 Windows→WSL로 UDP가 127.0.0.1로
+포워딩되지 않는다 (TCP는 됨). 반드시 WSL IP로 송신할 것:
+
+```powershell
+$env:BUDDYBOX_SITL_HOST = (wsl hostname -I).Trim().Split()[0]
+python autonomous_loop.py sitl
+```
+
+(또는 `.wslconfig`에 `networkingMode=mirrored` 설정 시 localhost 사용 가능)
 
 ## sim-to-real 주의점
 

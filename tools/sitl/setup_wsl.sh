@@ -34,12 +34,9 @@ echo "=== [4/4] aeroloop_gazebo 플러그인 빌드 ==="
 if [ ! -d "$SRC/aeroloop_gazebo" ]; then
   git clone -b gz --depth 1 https://github.com/betaflight/aeroloop_gazebo.git "$SRC/aeroloop_gazebo"
 fi
-cd "$SRC/aeroloop_gazebo"
-mkdir -p build
-cd build
-cmake .. >/dev/null
-make -j"$(nproc)"
+# gz 브랜치는 최상위가 아니라 plugins/ 아래에 CMakeLists가 있고 전용 스크립트로 빌드한다
+bash "$SRC/aeroloop_gazebo/build_plugin.sh"
 
 echo "=== 완료 ==="
-ls -la "$SRC/betaflight/obj/main/" | grep -i sitl || true
-find "$SRC/aeroloop_gazebo/build" -name '*.so' || true
+ls -la "$SRC/betaflight/obj/" | grep -i sitl || true
+find "$SRC/aeroloop_gazebo/plugins/build" -name '*.so' || true
