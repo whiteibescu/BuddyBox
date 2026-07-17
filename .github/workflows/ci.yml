@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r python/requirements.txt pytest
+      - run: python -m pytest python/tests -v
+
+  firmware-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - run: arduino-cli core update-index && arduino-cli core install arduino:avr
+      - run: arduino-cli compile --fqbn arduino:avr:leonardo firmware/promicro_ppm
+      - run: arduino-cli compile --fqbn arduino:avr:leonardo firmware/clock_check

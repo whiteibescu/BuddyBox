@@ -30,6 +30,27 @@ _HEADER = b"\xa5\x5a"
 _SEND_HZ = 50
 
 
+def clamp_us(us):
+    """펄스폭을 펌웨어와 동일한 범위(988~2012µs)로 제한한다."""
+    return max(CH_MIN, min(CH_MAX, int(us)))
+
+
+def norm_to_us(value):
+    """정규화 값 -1.0~+1.0 → 펄스폭 µs."""
+    value = max(-1.0, min(1.0, float(value)))
+    span = (CH_MAX - CH_MIN) / 2
+    return round(CH_MID + value * span)
+
+
+def build_frame(channels_us):
+    """8채널 µs 리스트 → 19바이트 시리얼 프레임 (헤더 + payload + XOR 체크섬)."""
+    payload = struct.pack("<8H", *(clamp_us(us) for us in channels_us))
+    checksum = 0
+    for b in payload:
+        checksum ^= b
+    return _HEADER + payload + bytes([checksum])
+
+
 def find_promicro_port():
     """Pro Micro(ATmega32U4, VID 0x2341/0x1B4F)로 보이는 첫 포트를 반환. 없으면 None."""
     for p in list_ports.comports():
@@ -67,15 +88,12 @@ class BuddyBox:
 
     def set_channel_us(self, index, us):
         """채널(0~7) 펄스폭을 µs(988~2012)로 직접 설정."""
-        us = max(CH_MIN, min(CH_MAX, int(us)))
         with self._lock:
-            self._channels[index] = us
+            self._channels[index] = clamp_us(us)
 
     def set_channel(self, index, value):
         """채널(0~7)을 정규화 값 -1.0~+1.0으로 설정."""
-        value = max(-1.0, min(1.0, float(value)))
-        span = (CH_MAX - CH_MIN) / 2
-        self.set_channel_us(index, round(CH_MID + value * span))
+        self.set_channel_us(index, norm_to_us(value))
 
     def set_sticks(self, roll=None, pitch=None, yaw=None, throttle=None):
         """스틱 4채널을 정규화 값으로 설정. None인 축은 유지.
@@ -103,11 +121,7 @@ class BuddyBox:
 
     def _frame(self):
         with self._lock:
-            payload = struct.pack("<8H", *self._channels)
-        checksum = 0
-        for b in payload:
-            checksum ^= b
-        return _HEADER + payload + bytes([checksum])
+            return build_frame(self._channels)
 
     def _tx_loop(self):
         interval = 1.0 / _SEND_HZ
