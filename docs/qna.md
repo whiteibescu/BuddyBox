@@ -32,6 +32,3 @@
 
 - **Q. .gitignore가 필요할까?**
   → 파이썬이 자동 생성하는 `__pycache__` 캐시 같은 파일이 커밋에 섞이는 것을 막기 위해 필요하다.
-
-- **Q. 커밋·푸시·PR은 어떻게 진행됐나?**
-  → `feature/buddybox-ppm-bridge` 브랜치로 커밋 후, GitHub 자격증명을 whiteibescu 계정으로 재로그인해 푸시하고 [PR #1](https://github.com/whiteibescu/BuddyBox/pull/1)을 생성했다.
