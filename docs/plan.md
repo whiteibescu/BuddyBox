@@ -39,9 +39,11 @@ PC → Pro Micro → TX15 Max(트레이너) → ELRS → Betaflight 관제 체�
 ## Phase 6 — 실제 제어 로직 연동 ⬜ 예정
 
 - [x] 안전 필터 계층 (`buddybox/safety.py` SafetyLimiter — 기울기·스로틀·슬루레이트 제한)
+- [x] 시뮬레이션 모드 (`BuddyBox(port="sim")` — 하드웨어 없이 제어 로직 개발 가능)
+- [x] 자동 제어 루프 뼈대 (`examples/autonomous_loop.py` — 컨트롤러→SafetyLimiter→BuddyBox 표준 흐름)
 - [ ] PC 쪽 자동 제어(비전 등)와 buddybox 라이브러리 연결
 
 ## 인프라
 
-- [x] 단위 테스트 (`python/tests/` — 프로토콜 인코딩, 안전 필터, 14개)
-- [x] GitHub Actions CI (푸시마다 펌웨어 컴파일 + 테스트 자동 실행)
+- [x] 단위 테스트 (`python/tests/` — 프로토콜 인코딩, 안전 필터, 시뮬레이션 모드, 18개)
+- [x] GitHub Actions CI (푸시마다 펌웨어 컴파일 + 테스트 자동 실행) — 첫 실행 통과 확인

@@ -59,6 +59,22 @@ def find_promicro_port():
     return None
 
 
+class _SimSerial:
+    """하드웨어 없이 개발할 때 쓰는 가짜 시리얼 포트. 보낸 프레임을 기록만 한다."""
+
+    def __init__(self):
+        self.frames_sent = 0
+        self.last_frame = None
+
+    def write(self, data):
+        self.frames_sent += 1
+        self.last_frame = data
+        return len(data)
+
+    def close(self):
+        pass
+
+
 class BuddyBox:
     """Pro Micro로 8채널 값을 50Hz로 전송하는 백그라운드 송신기.
 
@@ -67,13 +83,17 @@ class BuddyBox:
     """
 
     def __init__(self, port=None, baud=115200):
-        if port is None:
-            port = find_promicro_port()
+        """port="sim"이면 하드웨어 없이 동작하는 시뮬레이션 모드로 연다."""
+        if port == "sim":
+            self._ser = _SimSerial()
+        else:
             if port is None:
-                raise RuntimeError(
-                    "Pro Micro 포트를 찾지 못했습니다. port='COM5' 식으로 직접 지정하세요."
-                )
-        self._ser = serial.Serial(port, baud, timeout=0.1)
+                port = find_promicro_port()
+                if port is None:
+                    raise RuntimeError(
+                        "Pro Micro 포트를 찾지 못했습니다. port='COM5' 식으로 직접 지정하세요."
+                    )
+            self._ser = serial.Serial(port, baud, timeout=0.1)
         self.port = port
 
         self._lock = threading.Lock()
@@ -116,6 +136,11 @@ class BuddyBox:
     def get_channels_us(self):
         with self._lock:
             return list(self._channels)
+
+    @property
+    def simulator(self):
+        """시뮬레이션 모드면 기록 객체(frames_sent, last_frame)를, 아니면 None을 반환."""
+        return self._ser if isinstance(self._ser, _SimSerial) else None
 
     # ---- 전송 ----
 
