@@ -43,6 +43,14 @@ PC → Pro Micro → TX15 Max(트레이너) → ELRS → Betaflight 관제 체�
 - [x] 자동 제어 루프 뼈대 (`examples/autonomous_loop.py` — 컨트롤러→SafetyLimiter→BuddyBox 표준 흐름)
 - [ ] PC 쪽 자동 제어(비전 등)와 buddybox 라이브러리 연결
 
+## Phase 7 — SITL/Gazebo 시뮬레이션 (sim-to-real) 🔄 진행 중
+
+- [x] `BuddyBoxSitl` UDP 백엔드 (`buddybox/sitl.py` — SITL 포트 9004, 실물과 동일 API)
+- [x] WSL2 Ubuntu 24.04 설치
+- [ ] Gazebo Harmonic + Betaflight SITL + aeroloop_gazebo 빌드 (스크립트 실행 중)
+- [ ] autonomous_loop.py → SITL → Gazebo 가상 비행 검증
+- 상세: [sitl-gazebo.md](sitl-gazebo.md)
+
 ## 인프라
 
 - [x] 단위 테스트 (`python/tests/` — 프로토콜 인코딩, 안전 필터, 시뮬레이션 모드, 18개)

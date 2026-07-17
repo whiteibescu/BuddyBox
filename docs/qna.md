@@ -35,3 +35,6 @@
 
 - **Q. 하드웨어 없이(리모트로) 작업할 수 있는 게 있나?**
   → 프로토콜 단위 테스트, 자동 제어용 안전 필터(SafetyLimiter), GitHub Actions CI(클라우드 빌드/테스트)는 하드웨어 없이 진행 가능하다.
+
+- **Q. Gazebo에서 Betaflight 기준으로 돌려서 sim-to-real gap을 줄일 수 있나?**
+  → Betaflight SITL(실제 펌웨어의 PC 빌드)이 Gazebo Harmonic과 공식 연동되고 RC 입력을 UDP 9004로 받으므로, 동일한 제어 코드로 시뮬(BuddyBoxSitl)과 실물(BuddyBox)을 오가며 개발할 수 있다.
