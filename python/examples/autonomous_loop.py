@@ -6,6 +6,7 @@
 실행:
     python autonomous_loop.py            # 시뮬레이션 (하드웨어 불필요)
     python autonomous_loop.py COM11      # 실제 Pro Micro로 송신
+    python autonomous_loop.py sitl       # Betaflight SITL(UDP 9004)로 송신
 """
 
 import math
@@ -15,6 +16,7 @@ import time
 sys.path.insert(0, "..")
 from buddybox import BuddyBox
 from buddybox.safety import SafetyLimiter, StickCommand
+from buddybox.sitl import BuddyBoxSitl
 
 LOOP_HZ = 20
 DURATION_S = 10
@@ -42,7 +44,8 @@ def main():
         max_rate_per_s=2.0,    # 급격한 스틱 변화 방지
     )
 
-    with BuddyBox(port) as bb:
+    backend = BuddyBoxSitl() if port == "sitl" else BuddyBox(port)
+    with backend as bb:
         mode = "시뮬레이션" if bb.simulator else "실제 송신"
         print(f"모드: {mode} ({bb.port}), {LOOP_HZ}Hz 제어 루프 {DURATION_S}초")
 
