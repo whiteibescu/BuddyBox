@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="560" viewBox="0 0 880 560" font-family="Segoe UI, sans-serif">
+  <!-- background -->
+  <rect x="0" y="0" width="880" height="560" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+
+  <text x="440" y="34" text-anchor="middle" font-size="18" font-weight="bold" fill="#24292f">Pro Micro → 3.5mm 플러그 → TX15 Max DSC 배선</text>
+
+  <!-- USB connector -->
+  <rect x="150" y="52" width="70" height="26" rx="4" fill="#9aa4af"/>
+  <text x="185" y="69" text-anchor="middle" font-size="12" fill="#ffffff">USB</text>
+  <text x="245" y="69" font-size="12" fill="#57606a">→ PC (시리얼)</text>
+
+  <!-- board -->
+  <rect x="90" y="78" width="190" height="430" rx="10" fill="#1e3a5f" stroke="#0d2440" stroke-width="2"/>
+  <rect x="140" y="250" width="90" height="70" rx="4" fill="#0d1f33"/>
+  <text x="185" y="290" text-anchor="middle" font-size="11" fill="#7d8fa5">ATmega32U4</text>
+  <text x="185" y="500" text-anchor="middle" font-size="11" fill="#7d8fa5">Pro Micro (5V/16MHz)</text>
+
+  <!-- left pins: TX0 RX1 GND GND 2..9 -->
+  <g font-size="12" fill="#e6edf3" text-anchor="start">
+    <g fill="#c9a227">
+      <rect x="82"  y="92"  width="16" height="10"/><rect x="82" y="124" width="16" height="10"/>
+      <rect x="82"  y="156" width="16" height="10"/><rect x="82" y="188" width="16" height="10"/>
+      <rect x="82"  y="220" width="16" height="10"/><rect x="82" y="252" width="16" height="10"/>
+      <rect x="82"  y="284" width="16" height="10"/><rect x="82" y="316" width="16" height="10"/>
+      <rect x="82"  y="348" width="16" height="10"/><rect x="82" y="380" width="16" height="10"/>
+      <rect x="82"  y="412" width="16" height="10"/><rect x="82" y="444" width="16" height="10"/>
+    </g>
+    <text x="106" y="101">TX0</text><text x="106" y="133">RX1</text>
+    <text x="106" y="165">GND</text><text x="106" y="197">GND</text>
+    <text x="106" y="229">2</text><text x="106" y="261">3</text>
+    <text x="106" y="293">4</text><text x="106" y="325">5</text>
+    <text x="106" y="357">6</text><text x="106" y="389">7</text>
+    <text x="106" y="421">8</text><text x="106" y="453">9</text>
+  </g>
+
+  <!-- right pins: RAW GND RST VCC A3 A2 A1 A0 15 14 16 10 -->
+  <g font-size="12" fill="#e6edf3" text-anchor="end">
+    <g fill="#c9a227">
+      <rect x="272" y="92"  width="16" height="10"/>
+      <rect x="272" y="124" width="16" height="10" fill="#111111"/>
+      <rect x="272" y="156" width="16" height="10"/><rect x="272" y="188" width="16" height="10"/>
+      <rect x="272" y="220" width="16" height="10"/><rect x="272" y="252" width="16" height="10"/>
+      <rect x="272" y="284" width="16" height="10"/><rect x="272" y="316" width="16" height="10"/>
+      <rect x="272" y="348" width="16" height="10"/><rect x="272" y="380" width="16" height="10"/>
+      <rect x="272" y="412" width="16" height="10"/>
+      <rect x="272" y="444" width="16" height="10" fill="#d1242f"/>
+    </g>
+    <text x="264" y="101">RAW</text><text x="264" y="133" fill="#ffd7d5" font-weight="bold">GND ●</text>
+    <text x="264" y="165">RST</text><text x="264" y="197">VCC</text>
+    <text x="264" y="229">A3</text><text x="264" y="261">A2</text>
+    <text x="264" y="293">A1</text><text x="264" y="325">A0</text>
+    <text x="264" y="357">15</text><text x="264" y="389">14</text>
+    <text x="264" y="421">16</text>
+    <text x="264" y="453" fill="#ffd7d5" font-weight="bold">10 ●</text>
+  </g>
+
+  <!-- wires -->
+  <!-- GND (black): right GND pin (288,129) -> SLEEVE (560,315) -->
+  <polyline points="288,129 400,129 400,315 560,315" fill="none" stroke="#24292f" stroke-width="4" stroke-linejoin="round"/>
+  <!-- signal (red): pin 10 (288,449) -> TIP (560,235) -->
+  <polyline points="288,449 430,449 430,235 560,235" fill="none" stroke="#d1242f" stroke-width="4" stroke-linejoin="round"/>
+  <text x="436" y="222" font-size="12" fill="#d1242f">신호 (PPM) — 1kΩ 저항 권장</text>
+  <text x="406" y="342" font-size="12" fill="#24292f">접지 (GND)</text>
+
+  <!-- screw terminal plug -->
+  <rect x="560" y="200" width="150" height="150" rx="10" fill="#eef7ee" stroke="#2da44e" stroke-width="2"/>
+  <text x="635" y="190" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a7f37">나사조임식 3.5mm 플러그</text>
+  <g font-size="12">
+    <rect x="575" y="222" width="66" height="24" rx="4" fill="#2da44e"/>
+    <text x="608" y="239" text-anchor="middle" fill="#ffffff">TIP (L)</text>
+    <text x="650" y="239" fill="#d1242f" font-weight="bold">← 10번 선</text>
+    <rect x="575" y="262" width="66" height="24" rx="4" fill="#b6c2b6"/>
+    <text x="608" y="279" text-anchor="middle" fill="#ffffff">RING (R)</text>
+    <text x="650" y="279" fill="#57606a">미사용</text>
+    <rect x="575" y="302" width="66" height="24" rx="4" fill="#24292f"/>
+    <text x="608" y="319" text-anchor="middle" fill="#ffffff">SLEEVE ⏚</text>
+    <text x="650" y="319" fill="#24292f" font-weight="bold">← GND 선</text>
+  </g>
+
+  <!-- jack barrel + arrow to radio -->
+  <rect x="710" y="255" width="34" height="40" rx="6" fill="#57606a"/>
+  <rect x="744" y="265" width="26" height="20" fill="#9aa4af"/>
+  <circle cx="778" cy="275" r="8" fill="#c9d1d9" stroke="#57606a"/>
+  <path d="M 790 275 L 826 275" stroke="#57606a" stroke-width="3" marker-end="url(#arrow)"/>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#57606a"/></marker></defs>
+  <text x="830" y="262" text-anchor="end" font-size="12" fill="#57606a">TX15 Max</text>
+  <text x="830" y="296" text-anchor="end" font-size="12" font-weight="bold" fill="#1a7f37">DSC 잭</text>
+  <text x="830" y="312" text-anchor="end" font-size="11" fill="#d1242f">(헤드폰 잭 아님!)</text>
+
+  <!-- pin legend -->
+  <g font-size="12" fill="#57606a">
+    <text x="560" y="404" font-weight="bold" fill="#24292f">핀 요약</text>
+    <text x="560" y="426">TX0/RX1 : 시리얼 통신 (미사용 — USB로 대신함)</text>
+    <text x="560" y="446">GND ×3 : 접지 — 아무거나 사용 가능 (전부 연결됨)</text>
+    <text x="560" y="466">2~10, 14~16 : 디지털 입출력 — 10번을 PPM 출력으로 사용</text>
+    <text x="560" y="486">A0~A3 : 아날로그 입력 (미사용)</text>
+    <text x="560" y="506">RAW : 외부 전원 입력 / VCC : 5V 출력 / RST : 리셋</text>
+    <text x="560" y="526" fill="#d1242f">⚠ GND를 RAW·VCC·RST와 헷갈리지 말 것</text>
+  </g>
+</svg>
