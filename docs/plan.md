@@ -25,7 +25,8 @@ PC → Pro Micro → TX15 Max(트레이너) → ELRS → Betaflight 관제 체�
 - [x] 모델 Trainer 모드 = `Master/Jack`
 - [x] SYS → Trainer: 4채널 Replace / CH1~4 / 100% 확인
 - [x] 스윕 신호 수신 확인 (TRAINER 화면에서 Ail/Ele/Rud 값 왕복 확인됨)
-- [ ] **캘리브레이션** — PC가 전 채널 1500µs 송신 중에 Calibration 버튼 누르기
+- [x] **캘리브레이션** — 전 채널 1500µs 송신 중 Calibration 완료 (중앙=0 확인)
+- [x] 간헐적 "signal lost" 해결 — 점퍼선 교체 + PPM 극성을 EdgeTX 기본(LOW/negative)으로 변경
 - [ ] **트레이너 활성화 스위치** — Special Functions에 SH(모멘터리) → Trainer 등록
 - 상세: [radio-setup.md](radio-setup.md)
 

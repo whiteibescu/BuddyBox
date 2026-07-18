@@ -17,7 +17,7 @@
 #define PPM_CHANNELS       8
 #define PPM_FRAME_US       22500   // 프레임 길이
 #define PPM_PULSE_US       300     // 채널 구분 펄스 폭
-#define PPM_PULSE_LEVEL    HIGH    // 펄스 극성 (HIGH 펄스 / LOW 유휴). 인식 안 되면 LOW로 변경
+#define PPM_PULSE_LEVEL    LOW     // 펄스 극성: LOW 펄스/HIGH 유휴 = EdgeTX 기본(negative). 문제 시 HIGH로
 #define SIGNAL_TIMEOUT_MS  500
 
 #define CH_MIN_US          988
