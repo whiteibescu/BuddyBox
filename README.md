@@ -29,6 +29,19 @@ PC는 스틱 4채널(Roll/Pitch/Yaw/Throttle)만 제어하고, **ARM·모드 스
 | [docs/wiring.md](docs/wiring.md) | Pro Micro ↔ DSC 포트 배선 |
 | [docs/radio-setup.md](docs/radio-setup.md) | EdgeTX 트레이너 설정 + 안전 체크리스트 |
 
+## 배선 다이어그램
+
+![Pro Micro 배선](docs/img/promicro-wiring.svg)
+
+| 핀 | 뜻 | 이 프로젝트에서 |
+|---|---|---|
+| **10** | 디지털 입출력 | **PPM 신호 출력 → 플러그 TIP(L)** |
+| **GND** (3개) | 접지 (전부 내부 연결) | **아무거나 → 플러그 SLEEVE(⏚)** |
+| TX0 / RX1 | 하드웨어 시리얼 | 미사용 (PC 통신은 USB로) |
+| 2~9, 14~16 | 디지털 입출력 | 미사용 |
+| A0~A3 | 아날로그 입력 | 미사용 |
+| RAW / VCC / RST | 외부 전원 입력 / 5V 출력 / 리셋 | 미사용 — **GND와 헷갈리지 말 것!** |
+
 ## 시작하기
 
 1. **배선** — [docs/wiring.md](docs/wiring.md) 대로 D10→Tip, GND→Sleeve 연결
