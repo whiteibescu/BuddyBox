@@ -39,26 +39,44 @@ wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/VisionWorkspace/BuddyBox/tools/sitl/s
 
 설치 위치: WSL 내부 `/opt/buddybox-sitl/`
 
-## 실행 순서
+## 실행 순서 (검증된 명령어)
 
-터미널 3개 (모두 `wsl -d Ubuntu-24.04`):
+WSL 터미널 2개 + Windows PowerShell 1개:
 
 ```bash
-# ① Gazebo (WSLg로 GUI 표시됨)
-export GZ_SIM_SYSTEM_PLUGIN_PATH=/opt/buddybox-sitl/aeroloop_gazebo/plugins/build
-gz sim -r /opt/buddybox-sitl/aeroloop_gazebo/worlds/quadcopter_test_harmonic.sdf
+# ① WSL 터미널 1 — Gazebo (WSLg로 Windows에 창 뜸)
+wsl -d Ubuntu-24.04
+bash /mnt/c/VisionWorkspace/BuddyBox/tools/sitl/start_gazebo.sh
 
-# ② Betaflight SITL (실행 파일명은 버전에 따라 다름 — obj/ 안의 *_SITL)
-cd /opt/buddybox-sitl/betaflight && ./obj/betaflight_*_SITL
+# ② WSL 터미널 2 — Betaflight SITL
+wsl -d Ubuntu-24.04
+bash /mnt/c/VisionWorkspace/BuddyBox/tools/sitl/start_sitl.sh
 ```
 
 ```powershell
-# ③ Windows에서 우리 제어 루프 (WSL localhost는 Windows에서 접근 가능)
-cd python\examples
+# ③ Windows PowerShell — 가상 비행 (ARM→상승→호버→하강→DISARM)
+cd c:\VisionWorkspace\BuddyBox\python\examples
+$env:SITL_HOST = (wsl hostname -I).Trim().Split()[0]
+python virtual_flight.py
+
+# 또는 자동 제어 루프
+$env:BUDDYBOX_SITL_HOST = $env:SITL_HOST
 python autonomous_loop.py sitl
 ```
 
-Betaflight Configurator 연결(설정 변경 시): `tcp://127.0.0.1:5761`
+### SITL 최초 1회 설정 (ARM 스위치)
+
+새 eeprom.bin일 때 한 번만. Betaflight Configurator를 `tcp://<WSL IP>:5761`로
+연결하거나, CLI로:
+
+```
+aux 0 0 0 1700 2100     # ARM = AUX1(CH5) 1700~2100
+set small_angle = 180
+save                     # SITL이 종료됨 → start_sitl.sh로 재시작
+```
+
+가상 비행 검증 결과 (2026-07-18): ARM → 스로틀 상승 → 호버 → DISARM 시퀀스가
+MSP_STATUS ARMED 플래그 기준으로 정상 동작 확인.
 
 ## 검증 체크리스트
 
