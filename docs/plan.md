@@ -20,14 +20,15 @@ PC → Pro Micro → TX15 Max(트레이너) → ELRS → Betaflight 관제 체�
 - `python/examples/`: 수동 조종 GUI(manual_control.py), 스윕 테스트(channel_sweep.py)
 - PC → Pro Micro 시리얼 경로 + 타임아웃 페일세이프 검증 완료
 
-## Phase 4 — TX15 Max 설정 🔄 진행 중
+## Phase 4 — TX15 Max 설정 ✅ 완료
 
 - [x] 모델 Trainer 모드 = `Master/Jack`
 - [x] SYS → Trainer: 4채널 Replace / CH1~4 / 100% 확인
 - [x] 스윕 신호 수신 확인 (TRAINER 화면에서 Ail/Ele/Rud 값 왕복 확인됨)
 - [x] **캘리브레이션** — 전 채널 1500µs 송신 중 Calibration 완료 (중앙=0 확인)
 - [x] 간헐적 "signal lost" 해결 — 점퍼선 교체 + PPM 극성을 EdgeTX 기본(LOW/negative)으로 변경
-- [ ] **트레이너 활성화 스위치** — Special Functions에 SH(모멘터리) → Trainer 등록
+- [x] **트레이너 활성화 스위치** — SF1: SH↓ + Trainer + 활성 ON, 당김/놓음 전환 확인 완료
+- [x] 접지 단선 해결 — 나사조임 플러그 라벨 오표기: GND는 R 단자가 정답 (이슈 #4)
 - 상세: [radio-setup.md](radio-setup.md)
 
 ## Phase 5 — Betaflight 검증 ⬜ 예정 (props off!)
