@@ -39,7 +39,20 @@ wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/VisionWorkspace/BuddyBox/tools/sitl/s
 
 설치 위치: WSL 내부 `/opt/buddybox-sitl/`
 
-## 실행 순서 (검증된 명령어)
+## 한 방 실행 (권장)
+
+WSL 터미널 1개에서:
+
+```bash
+wsl -d Ubuntu-24.04
+bash /mnt/c/VisionWorkspace/BuddyBox/tools/sitl/run_all.sh        # 소프트웨어 렌더링
+bash /mnt/c/VisionWorkspace/BuddyBox/tools/sitl/run_all.sh gpu    # GPU 렌더링 (빠름, 창 안 뜨면 위로)
+```
+
+Gazebo·SITL을 자동으로 띄우고 가상 비행(ARM→상승→호버→하강→DISARM)까지 실행한다.
+끝나도 Gazebo/SITL은 남아 있으므로 비행만 재실행 가능. 전부 종료는 `stop_all.sh`.
+
+## 개별 실행 (수동)
 
 WSL 터미널 2개 + Windows PowerShell 1개:
 

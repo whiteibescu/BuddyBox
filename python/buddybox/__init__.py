@@ -14,8 +14,7 @@ import struct
 import threading
 import time
 
-import serial
-from serial.tools import list_ports
+# pyserial은 실물(BuddyBox) 사용 시에만 필요 — sitl/sim 모드는 없이도 동작하도록 지연 임포트
 
 CH_MIN = 988
 CH_MID = 1500
@@ -53,6 +52,7 @@ def build_frame(channels_us):
 
 def find_promicro_port():
     """Pro Micro(ATmega32U4, VID 0x2341/0x1B4F)로 보이는 첫 포트를 반환. 없으면 None."""
+    from serial.tools import list_ports
     for p in list_ports.comports():
         if p.vid in (0x2341, 0x1B4F):
             return p.device
@@ -87,6 +87,7 @@ class BuddyBox:
         if port == "sim":
             self._ser = _SimSerial()
         else:
+            import serial
             if port is None:
                 port = find_promicro_port()
                 if port is None:
@@ -153,7 +154,7 @@ class BuddyBox:
         while self._running:
             try:
                 self._ser.write(self._frame())
-            except serial.SerialException:
+            except OSError:  # SerialException 포함 (OSError 하위 클래스)
                 break
             time.sleep(interval)
 
