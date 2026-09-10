@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 build/
 .claude/settings.local.json
+python/models/
+python/recordings/
