@@ -68,6 +68,18 @@ def test_verified_arm_failure_reports_reasons():
         assert results == [("failed", True, ["THROTTLE"])]
 
 
+def test_set_channel_moves_arm_to_new_channel_and_neutralizes_old():
+    with BuddyBox("sim") as bb:
+        ac = ArmController(bb)
+        ac.arm()
+        assert bb.get_channels_us()[AUX1] == 1900
+        ac.set_channel(5)
+        assert bb.get_channels_us()[AUX1] == 1500
+        ac.arm()
+        assert bb.get_channels_us()[5] == 1900
+        assert ac.channel == 5
+
+
 def test_verified_disarm_and_error_path():
     with BuddyBox("sim") as bb:
         v = FakeVerifier()
