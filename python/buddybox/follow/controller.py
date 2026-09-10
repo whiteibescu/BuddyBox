@@ -9,7 +9,7 @@ from .pid import PID
 
 @dataclass
 class FollowConfig:
-    hover_throttle: float = -0.35
+    hover_throttle: float = -0.25
     throttle_mode: str = "absolute"
     lateral_axis: str = "yaw"
     lateral_kp: float = 0.6

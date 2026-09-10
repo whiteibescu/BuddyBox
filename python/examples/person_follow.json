@@ -1,5 +1,5 @@
 {
-  "hover_throttle": -0.35,
+  "hover_throttle": -0.25,
   "throttle_mode": "absolute",
   "lateral_axis": "yaw",
   "lateral_kp": 0.6,
