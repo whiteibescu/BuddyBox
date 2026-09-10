@@ -1,0 +1,6 @@
+-r requirements.txt
+numpy>=1.26
+opencv-python>=4.9
+pillow>=10
+onnxruntime>=1.17
+pygrabber>=0.2; sys_platform == "win32"

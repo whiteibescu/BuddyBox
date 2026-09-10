@@ -36,11 +36,13 @@ class SafetyLimiter:
     max_rate_per_s  : 모든 축의 초당 최대 변화량 (정규화 단위/초)
     """
 
-    def __init__(self, max_tilt=0.5, max_yaw=0.5, max_throttle=0.0, max_rate_per_s=2.0):
+    def __init__(self, max_tilt=0.5, max_yaw=0.5, max_throttle=0.0, max_rate_per_s=2.0,
+                 max_throttle_rate_per_s=None):
         self.max_tilt = max_tilt
         self.max_yaw = max_yaw
         self.max_throttle = max_throttle
         self.max_rate_per_s = max_rate_per_s
+        self.max_throttle_rate_per_s = max_throttle_rate_per_s
         self._last = StickCommand()
         self._last_t = None
 
@@ -63,11 +65,13 @@ class SafetyLimiter:
         if self._last_t is not None:
             dt = max(0.0, now - self._last_t)
             step = self.max_rate_per_s * dt
+            thr_rate = self.max_throttle_rate_per_s
+            thr_step = (thr_rate if thr_rate is not None else self.max_rate_per_s) * dt
             limited = StickCommand(
                 roll=_slew(self._last.roll, limited.roll, step),
                 pitch=_slew(self._last.pitch, limited.pitch, step),
                 yaw=_slew(self._last.yaw, limited.yaw, step),
-                throttle=_slew(self._last.throttle, limited.throttle, step),
+                throttle=_slew(self._last.throttle, limited.throttle, thr_step),
             )
 
         self._last = limited

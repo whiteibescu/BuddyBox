@@ -28,12 +28,17 @@ PC는 스틱 4채널(Roll/Pitch/Yaw/Throttle)만 제어하고, **ARM·모드 스
 | [firmware/promicro_ppm/](firmware/promicro_ppm/) | Pro Micro 펌웨어 (시리얼 → PPM) |
 | [firmware/clock_check/](firmware/clock_check/) | 보드 클럭(16/8MHz) 판별 스케치 |
 | [python/buddybox/](python/buddybox/) | PC 제어 라이브러리 (실물 시리얼 + SITL UDP 백엔드, SafetyLimiter 안전 필터) |
-| [python/examples/](python/examples/) | 수동 조종 GUI, 채널 스윕 테스트, 자동 제어 루프 뼈대 |
-| [python/tests/](python/tests/) | 단위 테스트 (프로토콜·안전 필터·시뮬레이션 모드) — CI에서 자동 실행 |
+| [python/buddybox/vision/](python/buddybox/vision/) | Walksnail VRX Pro UVC 캡처 + RF-DETR ONNX 사람 검출 + 타깃 추적 |
+| [python/buddybox/follow/](python/buddybox/follow/) | 사람 추적 → 스틱 PID 컨트롤러, 모드 감독(STANDBY/HOVER/FOLLOW), 파이프라인 |
+| [python/examples/](python/examples/) | 수동 조종 GUI, 채널 스윕 테스트, 자동 제어 루프 뼈대, **사람 추적 UI(person_follow.py)** |
+| [python/tools/](python/tools/) | 세션 리포트(`session_report.py`)·오프라인 PID 리플레이(`session_replay.py`) 분석 도구 |
+| [python/tests/](python/tests/) | 단위 테스트 (프로토콜·안전 필터·시뮬레이션·PID·트래커·컨트롤러·상태기계·세션 도구) — CI에서 자동 실행 |
+| [tools/person_follow.bat](tools/person_follow.bat) | 사람 추적 UI 실행 메뉴 (VRX/웹캠/파일 × sim/Pro Micro/SITL) |
 | [docs/wiring.md](docs/wiring.md) | Pro Micro ↔ DSC 포트 배선 (+ 플러그 라벨 오표기 실전 이슈) |
 | [docs/radio-setup.md](docs/radio-setup.md) | EdgeTX 트레이너 설정 + 안전 체크리스트 |
 | [docs/betaflight-verify.md](docs/betaflight-verify.md) | Phase 5 Betaflight 검증 절차 (props off) |
 | [docs/sitl-gazebo.md](docs/sitl-gazebo.md) | Betaflight SITL + Gazebo 시뮬레이션 (sim-to-real) |
+| [docs/person-follow.md](docs/person-follow.md) | Meteor75 Pro 2 사람 추적·호버링 (VRX Pro 캡처 노하우, 제어 로직, 운용 절차) |
 | [docs/plan.md](docs/plan.md) | 프로젝트 계획 & 진행 상황 |
 | [docs/qna.md](docs/qna.md) | 질문 & 답변 로그 |
 
@@ -69,6 +74,9 @@ PC는 스틱 4채널(Roll/Pitch/Yaw/Throttle)만 제어하고, **ARM·모드 스
    python manual_control.py       # 슬라이더/키보드 수동 조종
    ```
 5. **검증** — 프롭 제거 후 [docs/betaflight-verify.md](docs/betaflight-verify.md) 절차대로 Receiver 탭 확인 + 페일세이프 3종 테스트
+6. **사람 추적 (비전)** — `pip install -r requirements-vision.txt` 후 바탕화면 `BuddyBox Person Follow` 바로가기 또는
+   `tools\person_follow.bat` ([docs/person-follow.md](docs/person-follow.md)). 비행마다 세션이 자동 기록되고
+   `python tools/session_report.py` 로 분석한다.
 
 ## 시리얼 프로토콜 (PC → Pro Micro, 115200 baud)
 
