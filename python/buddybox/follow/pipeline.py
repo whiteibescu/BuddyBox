@@ -78,7 +78,7 @@ def motion_score(frame, prev_small):
 class FollowPipeline:
     def __init__(self, source, detector, backend, cfg, conf=0.5, every=2, loop_hz=30.0,
                  rec_dir="recordings", label="person", auto_session="always", annotated_video=False,
-                 session_max_s=300.0, min_free_gb=1.0, arm_verifier=None):
+                 session_max_s=300.0, min_free_gb=1.0, arm_verifier=None, arm_channel=AUX1):
         self.source = source
         self.detector = detector
         self.backend = backend
@@ -95,7 +95,8 @@ class FollowPipeline:
         self.controller = FollowController(cfg)
         self.supervisor = FlightSupervisor(self.controller)
         self.limiter = self._make_limiter(cfg)
-        self.arming = ArmController(backend, verifier=arm_verifier, on_result=self._on_arm_result)
+        self.arming = ArmController(backend, verifier=arm_verifier, channel=arm_channel,
+                                    on_result=self._on_arm_result)
 
         self._lock = Lock()
         self._sess_lock = Lock()
@@ -215,6 +216,10 @@ class FollowPipeline:
 
     def _on_arm_result(self, result, commanded, reasons):
         self._event("arm_result", result=result, commanded=bool(commanded), reasons=list(reasons))
+
+    def set_arm_channel(self, index):
+        self.arming.set_channel(index)
+        self._event("arm_channel", channel=int(index))
 
     def set_sitl_arm(self, armed):
         return self.arm() if armed else self.disarm()

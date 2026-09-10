@@ -79,6 +79,13 @@ class ArmController:
                 self.state.result = "unverified"
         return self.snapshot()
 
+    def set_channel(self, channel):
+        with self._lock:
+            old = self.channel
+            self.channel = int(channel)
+        if old != channel:
+            self.backend.set_channel_us(old, 1500)
+
     def arm(self, now=None):
         return self._command(True, now)
 

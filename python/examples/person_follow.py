@@ -95,6 +95,7 @@ def parse_args():
     ap.add_argument("--conf", type=float, default=0.5)
     ap.add_argument("--every", type=int, default=2, help="N 프레임마다 추론")
     ap.add_argument("--port", default="sim", help="sim / auto / COMx / sitl")
+    ap.add_argument("--arm-channel", type=int, default=5, help="ARM 채널 (CH, 1~8, 기본 5=AUX1)")
     ap.add_argument("--sitl-host", default=os.environ.get("BUDDYBOX_SITL_HOST", "127.0.0.1"))
     ap.add_argument("--config", default=str(DEFAULT_CONFIG))
     ap.add_argument("--rec-dir", default=str(DEFAULT_REC_DIR))
@@ -220,18 +221,19 @@ class App:
         self.backend_btn.grid(row=4, column=0, columnspan=2, sticky="ew", pady=2)
         conn.columnconfigure(1, weight=1)
 
-        arm = ttk.LabelFrame(panel, text="ARM / DISARM (AUX1)", padding=6)
+        arm = ttk.LabelFrame(panel, text="ARM", padding=4)
         arm.pack(fill="x", pady=(6, 0))
-        self.arm_btn = tk.Button(arm, text="ARM", width=10, command=self.arm, state="disabled")
-        self.arm_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
-        self.disarm_btn = tk.Button(arm, text="DISARM (Space)", command=self.disarm, state="disabled")
-        self.disarm_btn.grid(row=0, column=1, padx=2, pady=2, sticky="ew")
-        self.arm_status = tk.Label(arm, text="—", font=("Segoe UI", 13, "bold"), width=22, anchor="w")
-        self.arm_status.grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        self.arm_reason = tk.Label(arm, text="", fg="#c04040", wraplength=280, justify="left")
-        self.arm_reason.grid(row=2, column=0, columnspan=2, sticky="w")
-        arm.columnconfigure(0, weight=1)
-        arm.columnconfigure(1, weight=1)
+        self.arm_btn = tk.Button(arm, text="ARM", width=6, command=self.arm, state="disabled")
+        self.arm_btn.grid(row=0, column=0, padx=(0, 4), pady=1)
+        ttk.Label(arm, text="CH").grid(row=0, column=1, sticky="e")
+        self.arm_ch_var = tk.IntVar(value=self.args.arm_channel)
+        tk.Spinbox(arm, from_=1, to=8, width=3, textvariable=self.arm_ch_var,
+                   command=self._on_arm_channel).grid(row=0, column=2, padx=(2, 6))
+        self.arm_status = tk.Label(arm, text="—", font=("Segoe UI", 10, "bold"), anchor="w")
+        self.arm_status.grid(row=0, column=3, sticky="ew")
+        self.arm_reason = tk.Label(arm, text="", fg="#c04040", wraplength=280, justify="left", font=("Segoe UI", 8))
+        self.arm_reason.grid(row=1, column=0, columnspan=4, sticky="w")
+        arm.columnconfigure(3, weight=1)
 
         modes = ttk.LabelFrame(panel, text="모드", padding=6)
         modes.pack(fill="x", pady=(6, 0))
@@ -257,8 +259,7 @@ class App:
         self.toggle_vars = {}
         self.combo_vars = {}
 
-        trim_tab = ttk.Frame(nb, padding=6)
-        nb.add(trim_tab, text="트림/고도")
+        trim_tab = self._scroll_tab(nb, "트림/고도")
         r = 0
         for key, label, lo, hi, step in TRIM_TAB:
             self._add_scale(trim_tab, r, key, label, lo, hi, step)
@@ -282,13 +283,11 @@ class App:
         ttk.Button(btns, text="학습값 → 트림 반영", command=self.adopt_trim).pack(side="left", fill="x", expand=True)
         ttk.Button(btns, text="학습 초기화", command=self.reset_trim).pack(side="left", fill="x", expand=True, padx=(4, 0))
 
-        pid_tab = ttk.Frame(nb, padding=6)
-        nb.add(pid_tab, text="PID")
+        pid_tab = self._scroll_tab(nb, "PID")
         for r, (key, label, lo, hi, step) in enumerate(PID_TAB):
             self._add_scale(pid_tab, r, key, label, lo, hi, step)
 
-        tools = ttk.Frame(nb, padding=6)
-        nb.add(tools, text="도구")
+        tools = self._scroll_tab(nb, "도구")
         self.rec_btn = ttk.Button(tools, text="세션 기록 시작 (R)", command=self.toggle_session)
         self.rec_btn.grid(row=0, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
         ttk.Label(tools, text="자동 기록").grid(row=1, column=0, sticky="w")
@@ -311,6 +310,26 @@ class App:
             fill="x", pady=(6, 0))
         ttk.Label(panel, text="클릭=타깃 선택  우클릭=해제  W/S=호버 스로틀 ±0.01  R=세션  P=스냅샷",
                   foreground="#888", wraplength=320).pack(fill="x")
+
+    def _scroll_tab(self, notebook, title):
+        outer = ttk.Frame(notebook)
+        notebook.add(outer, text=title)
+        canvas = tk.Canvas(outer, highlightthickness=0, width=320)
+        vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas, padding=6)
+        window = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(window, width=e.width))
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        def on_wheel(event):
+            canvas.yview_scroll(int(-event.delta / 120), "units")
+
+        inner.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", on_wheel))
+        inner.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+        return inner
 
     def _add_scale(self, parent, row, key, label, lo, hi, step):
         ttk.Label(parent, text=label, width=14).grid(row=row, column=0, sticky="w")
@@ -362,7 +381,6 @@ class App:
             self.backend = None
             self.backend_btn.config(text="백엔드 연결")
             self.arm_btn.config(state="disabled")
-            self.disarm_btn.config(state="disabled")
             self.info("백엔드 해제")
             return
         try:
@@ -372,7 +390,6 @@ class App:
             return
         self.backend_btn.config(text=f"백엔드 해제 ({self.backend.port})")
         self.arm_btn.config(state="normal")
-        self.disarm_btn.config(state="normal")
         self.info(f"백엔드 연결: {self.backend.port}")
         self._maybe_start_pipeline()
 
@@ -425,7 +442,7 @@ class App:
                                        auto_session=self.auto_session_mode(),
                                        annotated_video=self.args.annotated_video,
                                        session_max_s=max(30.0, self.args.session_split_min * 60.0),
-                                       arm_verifier=verifier)
+                                       arm_verifier=verifier, arm_channel=self.arm_ch_var.get() - 1)
         self.pipeline.start()
         self.set_mode(Mode.STANDBY)
         free = self.pipeline.free_gb()
@@ -463,6 +480,14 @@ class App:
             self.backend.neutral()
         what = "오프셋 0 (조종기 스틱 그대로)" if self.cfg.offset_mode else "스틱 중립 + 스로틀 최소"
         self.info(f"PANIC: {what}")
+
+    def _on_arm_channel(self):
+        ch = max(1, min(8, self.arm_ch_var.get()))
+        self.arm_ch_var.set(ch)
+        aux = f"AUX{ch - 4}" if ch >= 5 else f"CH{ch}"
+        if self.pipeline is not None:
+            self.pipeline.set_arm_channel(ch - 1)
+        self.info(f"ARM 채널 = CH{ch} ({aux}, 인덱스 {ch - 1})")
 
     def arm(self):
         if self.pipeline is None:
