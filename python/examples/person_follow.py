@@ -504,8 +504,13 @@ class App:
             return
         self._arm_confirm_t = 0.0
         self.arm_btn.config(text="ARM", bg="SystemButtonFace", fg="black")
+        ch = self.arm_ch_var.get()
         state = self.pipeline.arm()
-        self.info(f"ARM 명령 전송 (AUX1=1900){'' if state and state['verifiable'] else ' · 확인 불가(실물 텔레메트리 없음)'}")
+        if state and state["verifiable"]:
+            self.info(f"ARM 명령 전송 (CH{ch}=1900) · FC 응답 확인 중")
+        else:
+            self.info(f"ARM 명령 전송 (CH{ch}=1900). 실물은 조종기 트레이너가 CH{ch}까지 넘겨야 "
+                      f"기체에 도달합니다 (기본 설정은 CH1~4만) — ARM 은 조종기 SA 스위치 권장")
 
     def disarm(self):
         self._arm_confirm_t = 0.0
