@@ -372,7 +372,7 @@ def plot(session, out_path):
     axes[3].set_xlabel("t (s)")
     axes[3].legend(loc="upper right", fontsize=8)
     for e in session["events"]:
-        if e.get("kind") in ("mode", "panic", "trim_adopt", "trim_reset"):
+        if e.get("kind") in ("mode", "panic", "trim_adopt", "trim_reset", "arm", "disarm", "arm_result"):
             for ax in axes:
                 ax.axvline(e["t"], color="k", lw=0.6, alpha=0.5)
             axes[0].text(e["t"], axes[0].get_ylim()[1], e.get("mode", e["kind"]), fontsize=7, rotation=90, va="top")
@@ -386,7 +386,7 @@ def plot(session, out_path):
 def export_csv(session, out_path):
     frames = session["frames"]
     cols = ["t", "seq", "det_seq", "new", "rec_frame", "mode", "status", "fps", "infer_ms", "video_ok", "motion",
-            "n_persons", "track_cx", "track_cy", "track_w", "track_h", "track_conf", "track_age", "track_lost",
+            "arm", "n_persons", "track_cx", "track_cy", "track_w", "track_h", "track_conf", "track_age", "track_lost",
             "err_x", "err_y", "err_size", "raw_x", "raw_y", "raw_size",
             "raw_roll", "raw_pitch", "raw_yaw", "raw_throttle", "roll", "pitch", "yaw", "throttle",
             "trim", "trim_offset", "descend", "ch1", "ch2", "ch3", "ch4", "ch5"]
@@ -401,7 +401,7 @@ def export_csv(session, out_path):
             us = f.get("us") or [None] * 5
             w.writerow([f.get("t"), f.get("seq"), f.get("det_seq"), f.get("new"), f.get("rec_frame"), f.get("mode"),
                         f.get("status"), f.get("fps"), f.get("infer_ms"), f.get("video_ok"), f.get("motion"),
-                        len(f.get("persons") or []), tr.get("cx"), tr.get("cy"), tr.get("w"), tr.get("h"),
+                        f.get("arm"), len(f.get("persons") or []), tr.get("cx"), tr.get("cy"), tr.get("w"), tr.get("h"),
                         tr.get("conf"), tr.get("age"), tr.get("lost"),
                         err.get("x"), err.get("y"), err.get("size"), err.get("raw_x"), err.get("raw_y"), err.get("raw_size"),
                         raw.get("roll"), raw.get("pitch"), raw.get("yaw"), raw.get("throttle"),

@@ -111,6 +111,13 @@ def draw_hud(frame, tele):
     if rec:
         cv2.circle(frame, (W - 30, 30), 10, C_RED, -1)
         _text(frame, rec, (W - 60 - int(len(rec) * 12 * fs), 38), fs, C_RED, 2)
+    arm = tele.get("arm") or {}
+    label = arm.get("label")
+    if label:
+        colors = {"ARMED": C_GREEN, "DISARMED": C_GRAY, "ARM FAILED": C_RED, "DISARM FAILED": C_RED}
+        color = colors.get(label, C_YELLOW)
+        text = label if arm.get("verifiable") else f"{label} (unverified)"
+        _text(frame, text, (W - 40 - int(len(text) * 14 * fs), 38 + line_h), fs * 1.1, color, 2)
     _draw_sticks(frame, cmd, W, H)
 
 
