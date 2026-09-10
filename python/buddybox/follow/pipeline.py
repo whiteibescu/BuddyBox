@@ -8,12 +8,12 @@ import cv2
 from ..safety import SafetyLimiter
 from ..vision.recorder import save_snapshot
 from ..vision.tracker import TargetTracker
+from .arming import AUX1, ArmController
 from .controller import FollowController
 from .overlay import draw_overlay
 from .session import Session
 from .state import FlightSupervisor, Mode, Status
 
-AUX1 = 4
 AUTO_SESSION_MODES = ("always", "mode", "off")
 MOTION_SIZE = (64, 36)
 
@@ -78,7 +78,7 @@ def motion_score(frame, prev_small):
 class FollowPipeline:
     def __init__(self, source, detector, backend, cfg, conf=0.5, every=2, loop_hz=30.0,
                  rec_dir="recordings", label="person", auto_session="always", annotated_video=False,
-                 session_max_s=300.0, min_free_gb=1.0):
+                 session_max_s=300.0, min_free_gb=1.0, arm_verifier=None):
         self.source = source
         self.detector = detector
         self.backend = backend
@@ -95,6 +95,7 @@ class FollowPipeline:
         self.controller = FollowController(cfg)
         self.supervisor = FlightSupervisor(self.controller)
         self.limiter = self._make_limiter(cfg)
+        self.arming = ArmController(backend, verifier=arm_verifier, on_result=self._on_arm_result)
 
         self._lock = Lock()
         self._sess_lock = Lock()
@@ -195,9 +196,28 @@ class FollowPipeline:
         self.cfg.hover_throttle = max(-1.0, min(1.0, float(value)))
         self.apply_config(self.cfg)
 
+    @property
+    def arm_state(self):
+        return self.arming.snapshot()
+
+    def arm(self):
+        if self.supervisor.mode != Mode.STANDBY:
+            return None
+        state = self.arming.arm()
+        self._event("arm", verifiable=state["verifiable"])
+        return state
+
+    def disarm(self):
+        self.panic()
+        state = self.arming.disarm()
+        self._event("disarm", verifiable=state["verifiable"])
+        return state
+
+    def _on_arm_result(self, result, commanded, reasons):
+        self._event("arm_result", result=result, commanded=bool(commanded), reasons=list(reasons))
+
     def set_sitl_arm(self, armed):
-        self.backend.set_channel_us(AUX1, 1900 if armed else 1000)
-        self._event("sitl_arm", armed=bool(armed))
+        return self.arm() if armed else self.disarm()
 
     def select_target(self, x, y):
         self.tracker.select_at(x, y)
@@ -224,6 +244,7 @@ class FollowPipeline:
         if self._thread is not None:
             self._thread.join(timeout=3.0)
         self.stop_session()
+        self.arming.stop()
         self.backend.neutral()
 
     def latest(self):
@@ -400,6 +421,7 @@ class FollowPipeline:
                 "persons": len(dets),
                 "det_seq": det_seq,
                 "motion": motion,
+                "arm": self.arming.snapshot(),
                 "trim": self.controller.effective_trim,
                 "trim_offset": self.controller.trim_offset,
                 "descend": self.supervisor.descend,

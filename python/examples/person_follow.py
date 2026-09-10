@@ -2,6 +2,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -12,6 +13,7 @@ from buddybox import BuddyBox
 from buddybox.follow.controller import FollowConfig
 from buddybox.follow.pipeline import AUTO_SESSION_MODES, FollowPipeline
 from buddybox.follow.state import Mode
+from buddybox.msp import SITL_MSP_PORT, MspClient
 from buddybox.sitl import BuddyBoxSitl
 from buddybox.vision.capture import (
     PRESETS,
@@ -130,6 +132,12 @@ def make_backend(spec, sitl_host):
     return BuddyBox(spec)
 
 
+def make_arm_verifier(spec, sitl_host):
+    if (spec or "").strip().lower() == "sitl":
+        return MspClient(host=sitl_host, port=SITL_MSP_PORT)
+    return None
+
+
 def serial_ports():
     try:
         from serial.tools import list_ports
@@ -151,6 +159,7 @@ class App:
         self.photo = None
         self.display_size = (960, 540)
         self._syncing = False
+        self._arm_confirm_t = 0.0
 
         self.root = tk.Tk()
         self.root.title("BuddyBox Person Follow")
@@ -209,11 +218,20 @@ class App:
         self.port_box.grid(row=3, column=1, sticky="ew", pady=2)
         self.backend_btn = ttk.Button(conn, text="백엔드 연결", command=self.toggle_backend)
         self.backend_btn.grid(row=4, column=0, columnspan=2, sticky="ew", pady=2)
-        self.arm_var = tk.BooleanVar(value=False)
-        self.arm_chk = ttk.Checkbutton(conn, text="SITL ARM (AUX1)", variable=self.arm_var,
-                                       command=self.on_arm_toggle, state="disabled")
-        self.arm_chk.grid(row=5, column=0, columnspan=2, sticky="w")
         conn.columnconfigure(1, weight=1)
+
+        arm = ttk.LabelFrame(panel, text="ARM / DISARM (AUX1)", padding=6)
+        arm.pack(fill="x", pady=(6, 0))
+        self.arm_btn = tk.Button(arm, text="ARM", width=10, command=self.arm, state="disabled")
+        self.arm_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
+        self.disarm_btn = tk.Button(arm, text="DISARM (Space)", command=self.disarm, state="disabled")
+        self.disarm_btn.grid(row=0, column=1, padx=2, pady=2, sticky="ew")
+        self.arm_status = tk.Label(arm, text="—", font=("Segoe UI", 13, "bold"), width=22, anchor="w")
+        self.arm_status.grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self.arm_reason = tk.Label(arm, text="", fg="#c04040", wraplength=280, justify="left")
+        self.arm_reason.grid(row=2, column=0, columnspan=2, sticky="w")
+        arm.columnconfigure(0, weight=1)
+        arm.columnconfigure(1, weight=1)
 
         modes = ttk.LabelFrame(panel, text="모드", padding=6)
         modes.pack(fill="x", pady=(6, 0))
@@ -223,8 +241,8 @@ class App:
             b = tk.Button(modes, text=label, width=10, command=lambda m=mode: self.set_mode(m))
             b.grid(row=0, column=i, padx=2, pady=2)
             self.mode_buttons[mode] = b
-        self.panic_btn = tk.Button(modes, text="PANIC (Space)", bg="#b00020", fg="white",
-                                   activebackground="#e02040", command=self.panic)
+        self.panic_btn = tk.Button(modes, text="긴급 정지 · DISARM (Space)", bg="#b00020", fg="white",
+                                   activebackground="#e02040", command=self.disarm)
         self.panic_btn.grid(row=1, column=0, columnspan=3, sticky="ew", padx=2, pady=(6, 2))
         self.status_var = tk.StringVar(value="—")
         ttk.Label(modes, textvariable=self.status_var, font=("Segoe UI", 11, "bold")).grid(
@@ -307,8 +325,8 @@ class App:
         r.bind("1", lambda e: self.set_mode(Mode.STANDBY))
         r.bind("2", lambda e: self.set_mode(Mode.HOVER))
         r.bind("3", lambda e: self.set_mode(Mode.FOLLOW))
-        r.bind("<space>", lambda e: self.panic())
-        r.bind("<Escape>", lambda e: self.panic())
+        r.bind("<space>", lambda e: self.disarm())
+        r.bind("<Escape>", lambda e: self.disarm())
         r.bind("w", lambda e: self.nudge_trim(+0.01))
         r.bind("s", lambda e: self.nudge_trim(-0.01))
         r.bind("r", lambda e: self.toggle_session())
@@ -343,7 +361,8 @@ class App:
             self.backend.close()
             self.backend = None
             self.backend_btn.config(text="백엔드 연결")
-            self.arm_chk.config(state="disabled")
+            self.arm_btn.config(state="disabled")
+            self.disarm_btn.config(state="disabled")
             self.info("백엔드 해제")
             return
         try:
@@ -352,8 +371,8 @@ class App:
             messagebox.showerror("백엔드", str(exc))
             return
         self.backend_btn.config(text=f"백엔드 해제 ({self.backend.port})")
-        is_sitl = self.port_var.get().strip().lower() == "sitl"
-        self.arm_chk.config(state="normal" if is_sitl else "disabled")
+        self.arm_btn.config(state="normal")
+        self.disarm_btn.config(state="normal")
         self.info(f"백엔드 연결: {self.backend.port}")
         self._maybe_start_pipeline()
 
@@ -399,12 +418,14 @@ class App:
     def _maybe_start_pipeline(self):
         if self.source is None or self.backend is None or self.pipeline is not None:
             return
+        verifier = make_arm_verifier(self.port_var.get(), self.args.sitl_host)
         self.pipeline = FollowPipeline(self.source, self.detector, self.backend, self.cfg,
                                        conf=self.args.conf, every=self.args.every,
                                        rec_dir=self.rec_dir,
                                        auto_session=self.auto_session_mode(),
                                        annotated_video=self.args.annotated_video,
-                                       session_max_s=max(30.0, self.args.session_split_min * 60.0))
+                                       session_max_s=max(30.0, self.args.session_split_min * 60.0),
+                                       arm_verifier=verifier)
         self.pipeline.start()
         self.set_mode(Mode.STANDBY)
         free = self.pipeline.free_gb()
@@ -443,11 +464,35 @@ class App:
         what = "오프셋 0 (조종기 스틱 그대로)" if self.cfg.offset_mode else "스틱 중립 + 스로틀 최소"
         self.info(f"PANIC: {what}")
 
-    def on_arm_toggle(self):
+    def arm(self):
+        if self.pipeline is None:
+            self.info("파이프라인이 없습니다 (카메라+백엔드 연결 필요)")
+            return
+        if self.pipeline.mode != Mode.STANDBY:
+            self.info("ARM 은 STANDBY 에서만 가능합니다 (먼저 1 STANDBY)")
+            return
+        now = time.time()
+        if now - self._arm_confirm_t > 3.0:
+            self._arm_confirm_t = now
+            self.arm_btn.config(text="ARM? 한 번 더", bg="#c07000", fg="white")
+            self.info("ARM 확인: 3초 안에 ARM 을 한 번 더 누르세요 (프롭 주의)")
+            return
+        self._arm_confirm_t = 0.0
+        self.arm_btn.config(text="ARM", bg="SystemButtonFace", fg="black")
+        state = self.pipeline.arm()
+        self.info(f"ARM 명령 전송 (AUX1=1900){'' if state and state['verifiable'] else ' · 확인 불가(실물 텔레메트리 없음)'}")
+
+    def disarm(self):
+        self._arm_confirm_t = 0.0
+        if hasattr(self, "arm_btn"):
+            self.arm_btn.config(text="ARM", bg="SystemButtonFace", fg="black")
         if self.pipeline is not None:
-            self.pipeline.set_sitl_arm(self.arm_var.get())
+            self.pipeline.disarm()
+            self.set_mode(Mode.STANDBY)
         elif self.backend is not None:
-            self.backend.set_channel_us(4, 1900 if self.arm_var.get() else 1000)
+            self.backend.neutral()
+            self.backend.set_channel_us(4, 1000)
+        self.info("DISARM (AUX1=1000) + 스로틀 최소")
 
     def nudge_trim(self, delta):
         var = self.tune_vars["hover_throttle"]
@@ -562,6 +607,23 @@ class App:
         if proc.returncode == 0 and sys.platform == "win32":
             os.startfile(str(target))
 
+    def _refresh_arm(self, arm):
+        label = arm.get("label") or "—"
+        colors = {"ARMED": "#1e8020", "DISARMED": "#606060", "ARM FAILED": "#c00020",
+                  "DISARM FAILED": "#c00020", "ARM?": "#c07000", "DISARM?": "#c07000"}
+        color = colors.get(label, "#b07000")
+        suffix = ""
+        if arm.get("label") in ("ARM SENT", "DISARM SENT") and not arm.get("verifiable"):
+            suffix = " · 확인 불가"
+        self.arm_status.config(text=label + suffix, fg=color)
+        reasons = arm.get("reasons") or []
+        if arm.get("result") == "failed" and reasons:
+            self.arm_reason.config(text="막힌 이유: " + ", ".join(reasons))
+        elif arm.get("error"):
+            self.arm_reason.config(text="FC 확인 불가: " + arm["error"])
+        else:
+            self.arm_reason.config(text="")
+
     def on_canvas_click(self, event):
         if self.pipeline is None or self.pipeline.frame_size is None:
             return
@@ -613,6 +675,7 @@ class App:
             if tele.get("rec"):
                 line += "\n● " + tele["rec"]
             self.trim_var.set(line)
+        self._refresh_arm(tele.get("arm") or {})
         if self.pipeline.session_active and self.rec_btn.cget("text").startswith("세션 기록 시작"):
             self.rec_btn.config(text="세션 기록 중지 (R)")
         elif not self.pipeline.session_active and self.rec_btn.cget("text").startswith("세션 기록 중지"):

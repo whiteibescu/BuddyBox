@@ -119,6 +119,7 @@ class Session:
             "infer_ms": round(tele.get("infer_ms", 0.0), 1),
             "video_ok": tele.get("video_ok"),
             "motion": round(tele.get("motion", 0.0), 4),
+            "arm": (tele.get("arm") or {}).get("label", ""),
             "persons": [[round(p[0], 3), round(p[1], 4), round(p[2], 4), round(p[3], 4), round(p[4], 4)]
                         for p in persons],
             "track": None if track is None else {
