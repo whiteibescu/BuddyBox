@@ -43,7 +43,20 @@ PC → Pro Micro → TX15 Max(트레이너) → ELRS → Betaflight 관제 체�
 - [x] 안전 필터 계층 (`buddybox/safety.py` SafetyLimiter — 기울기·스로틀·슬루레이트 제한)
 - [x] 시뮬레이션 모드 (`BuddyBox(port="sim")` — 하드웨어 없이 제어 로직 개발 가능)
 - [x] 자동 제어 루프 뼈대 (`examples/autonomous_loop.py` — 컨트롤러→SafetyLimiter→BuddyBox 표준 흐름)
-- [ ] PC 쪽 자동 제어(비전 등)와 buddybox 라이브러리 연결
+- [x] PC 쪽 자동 제어(비전)와 buddybox 라이브러리 연결 — Phase 8 참고
+
+## Phase 8 — 사람 추적 + 호버링 (Meteor75 Pro 2 · Walksnail VRX Pro) 🔄 진행 중
+
+- [x] `buddybox/vision/` — VRX Pro UVC 캡처(DSHOW·MJPG 1080p30, 이름 지정), RF-DETR ONNX 검출, 타깃 트래커
+- [x] `buddybox/follow/` — 화면 오차→yaw/pitch/throttle PID, STANDBY/HOVER/FOLLOW 감독, LOST·영상끊김 시 호버 복귀
+- [x] `examples/person_follow.py` — tkinter UI (연결·모드·실시간 튜닝·녹화·스냅샷·CSV 로그·설정 저장)
+- [x] 녹화 영상 재생으로 파이프라인 검증 (검출 ~57ms/CPU, 제어 루프 30Hz, 배경 창 추론 지연 문제 해결)
+- [x] 호버 상승 대책: 트림 기본값 하향, 트림 자동 학습, LOST 서서히 하강, 머리 기준 고도 오차, 스로틀 슬루, offset 모드
+- [x] 세션 자동 기록(raw.mp4 + frames.jsonl + events) + 리포트/리플레이 분석 도구 (`python/tools/`)
+- [ ] 실기 트림 찾기 (SH 짧게 당겨 확인) → 세션 리포트로 PID 재튜닝
+- [ ] SITL + 웹캠으로 yaw/pitch 부호·게인 확인
+- [ ] 실기: HOVER 트림 맞추기 → FOLLOW(yaw만) → 거리 유지 → 고도 보조 순으로 단계 활성화
+- 상세: [person-follow.md](person-follow.md)
 
 ## Phase 7 — SITL/Gazebo 시뮬레이션 (sim-to-real) 🔄 진행 중
 

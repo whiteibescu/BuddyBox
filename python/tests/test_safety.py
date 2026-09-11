@@ -49,3 +49,18 @@ def test_dict_input_accepted():
     lim = SafetyLimiter(max_rate_per_s=1000)
     out = lim.apply({"roll": 0.1, "pitch": 0.0, "yaw": 0.0, "throttle": -1.0}, now=0.0)
     assert abs(out["roll"] - 0.1) < 1e-9
+
+
+def test_throttle_slew_can_be_slower_than_other_axes():
+    lim = SafetyLimiter(max_tilt=1.0, max_throttle=1.0, max_rate_per_s=2.0, max_throttle_rate_per_s=0.5)
+    lim.apply(StickCommand(roll=0.0, throttle=-1.0), now=0.0)
+    out = lim.apply(StickCommand(roll=1.0, throttle=1.0), now=0.1)
+    assert abs(out["roll"] - 0.2) < 1e-9
+    assert abs(out["throttle"] - (-1.0 + 0.05)) < 1e-9
+
+
+def test_throttle_slew_defaults_to_common_rate():
+    lim = SafetyLimiter(max_throttle=1.0, max_rate_per_s=2.0)
+    lim.apply(StickCommand(throttle=-1.0), now=0.0)
+    out = lim.apply(StickCommand(throttle=1.0), now=0.1)
+    assert abs(out["throttle"] - (-1.0 + 0.2)) < 1e-9

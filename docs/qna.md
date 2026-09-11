@@ -105,3 +105,22 @@
 
 - **Q. Trainer 모드에서 값들이 변하는지 테스트해줄래?**
   → pytest 23개(프로토콜/safety/sim/SITL) 전부 통과 + COM11 Pro Micro 실기 스윕으로 세 채널 모두 988~2012µs 전 범위 전송·중립 복귀를 확인했고, TX15 Max Trainer 화면에서 막대 움직임까지 육안 검증 완료 — 무입력 상태에서는 값이 0에 지터 없이 고정되므로 PC → Pro Micro → PPM → 조종기 Trainer 전 구간의 신호 품질이 깨끗하다.
+
+
+## 2026-09-10
+
+- **Q. BuddyBox로 Meteor75 Pro 2가 VRX Pro 피드에서 사람을 추적하며 호버링하게 하려면 뭐가 필요한가?**
+  → 기존 `realtime_uvc.py`의 UVC 캡처·RF-DETR 검출·녹화를 `buddybox/vision/`으로 포팅하고, 그 위에 화면 오차(가로 위치→yaw, 박스 높이→pitch, 세로 위치→throttle 보정) PID 컨트롤러와 STANDBY/HOVER/FOLLOW 감독기(`buddybox/follow/`)를 얹어 SafetyLimiter→BuddyBox/SITL/sim으로 보내는 구조로 만들었고, tkinter UI(`examples/person_follow.py`)에서 연결·모드·실시간 튜닝·녹화·CSV 로그를 다룬다 — ARM과 최종 제어권(SH 스위치)은 설계 원칙대로 조종기에 남긴다.
+
+- **Q. UI를 띄우면 몇 초 뒤 추론이 55ms에서 500ms로 느려지는데 왜인가?**
+  → UI 창이 배경으로 가면 onnxruntime이 논리 코어 32개 전부에 띄운 스핀 스레드가 선점당해 병렬 구간이 늘어지는 현상이었다 — 창을 최상위로 두면 60ms, 전력 스로틀링 해제는 무효, 우선순위 HIGH는 오히려 악화, ORT 스레드를 코어 절반(16)으로 제한하면 배경에서도 60ms라서 기본값을 `cpu_count//2`(`--threads`)로 고정했다.
+
+- **Q. 고도 센서가 없는데 호버링 유지는 어떻게 하나?**
+  → 절대 고도는 알 수 없으므로 `hover_throttle` 트림(조종기로 호버시킬 때의 스로틀 위치)을 기본으로 두고, 사람 박스의 세로 위치가 목표선에서 벗어난 만큼만 ±0.12 범위에서 스로틀을 보정한다(고도 보조) — 사람이 없거나 LOST면 트림으로 복귀하고, 필요 없으면 UI에서 끌 수 있다.
+
+- **Q. HOVER 에서 기체가 너무 세게 위로 올라가는데(FOLLOW 도 마찬가지) 스테디하게 유지하는 방법이 있나?**
+  → 고도 센서가 없어 HOVER 는 고정 트림을 보내는 개루프인데 기본 트림 -0.2(≈40%)가 Gazebo 모델 기준이라 실물 1S 훕(호버 30~35%)에는 너무 높았고, FOLLOW 는 ±0.12 보정으로 그 오차를 못 이긴 채 사람이 화면 밖으로 빠지면 LOST→잘못된 트림 복귀→더 상승하는 악순환이었다 — 기본 트림을 -0.35 로 낮추고, 추적 중 호버 트림을 자동 학습(위 +0.10/아래 -0.30)해 LOST 때도 학습값으로 호버하며 3초 넘게 잃으면 서서히 하강하게 했고, 고도 기준을 박스 중심에서 머리로 바꾸고(다리 잘림 오판 방지) 스로틀 전용 슬루(0.6/s)와 Kd 를 넣었다. 그래도 완전한 고도 유지는 불가능하므로 조종기 Thr 을 EdgeTX `+=` 로 두고 PC 는 보정만 더하는 offset 모드, FC 에 baro 가 있으면 Betaflight ALT_HOLD 가 대안이다.
+
+- **Q. PID 도 다시 세팅해야 할 것 같고, 전체적으로 디버깅할 수 있게 영상 프레임도 분석하기 좋은 구조로 만들 수 있나?**
+  → STANDBY 를 벗어나면 세션 폴더(`recordings/session_*`)에 원본 영상 raw.mp4 + 제어 스텝별 frames.jsonl(검출 박스·트랙·오차·PID 출력·µs·트림) + events.jsonl + 설정/메타가 자동 기록되고, `tools/session_report.py`(요약 report.md, 프레임 격자 sheet.png, 시계열 plot.png, CSV)와 `tools/session_replay.py`(같은 검출 입력에 다른 PID 설정을 개루프로 다시 돌려 비교)로 비행 없이도 분석·재튜닝할 수 있다.
+
