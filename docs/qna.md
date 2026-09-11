@@ -102,6 +102,11 @@
 
 - **Q. Meteor75 모델을 한번 직접 만들어볼래?**
   → iris를 스케일다운한 `betaloop_meteor75` 모델(75mm 휠베이스, 45mm 프롭, AUW ~48g)과 전용 월드를 만들어 헤드리스로 이륙~착륙 검증까지 완료했다 — 초소형 기체는 1g 로터 링크가 물리 발산(ODE AABB 크래시)하므로 5g으로 패딩하고, 모터 P게인은 관성에 비례해 축소(0.01→5e-4), LiftDrag area는 실측 역산으로 맞춰야 한다(0.4, 호버 스로틀 ~41%).
+
+- **Q. Trainer 모드에서 값들이 변하는지 테스트해줄래?**
+  → pytest 23개(프로토콜/safety/sim/SITL) 전부 통과 + COM11 Pro Micro 실기 스윕으로 세 채널 모두 988~2012µs 전 범위 전송·중립 복귀를 확인했고, TX15 Max Trainer 화면에서 막대 움직임까지 육안 검증 완료 — 무입력 상태에서는 값이 0에 지터 없이 고정되므로 PC → Pro Micro → PPM → 조종기 Trainer 전 구간의 신호 품질이 깨끗하다.
+
+
 ## 2026-09-10
 
 - **Q. BuddyBox로 Meteor75 Pro 2가 VRX Pro 피드에서 사람을 추적하며 호버링하게 하려면 뭐가 필요한가?**
@@ -118,3 +123,4 @@
 
 - **Q. PID 도 다시 세팅해야 할 것 같고, 전체적으로 디버깅할 수 있게 영상 프레임도 분석하기 좋은 구조로 만들 수 있나?**
   → STANDBY 를 벗어나면 세션 폴더(`recordings/session_*`)에 원본 영상 raw.mp4 + 제어 스텝별 frames.jsonl(검출 박스·트랙·오차·PID 출력·µs·트림) + events.jsonl + 설정/메타가 자동 기록되고, `tools/session_report.py`(요약 report.md, 프레임 격자 sheet.png, 시계열 plot.png, CSV)와 `tools/session_replay.py`(같은 검출 입력에 다른 PID 설정을 개루프로 다시 돌려 비교)로 비행 없이도 분석·재튜닝할 수 있다.
+
