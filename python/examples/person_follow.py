@@ -171,7 +171,7 @@ class App:
 
         if not args.no_autoconnect:
             self.root.after(100, self.connect_all)
-        self.root.after(30, self._refresh)
+        self.root.after(15, self._refresh)
 
     def _build_ui(self):
         style = ttk.Style(self.root)
@@ -672,7 +672,7 @@ class App:
         try:
             self._refresh_once()
         finally:
-            self.root.after(30, self._refresh)
+            self.root.after(15, self._refresh)
 
     def _refresh_once(self):
         if self.pipeline is None:
