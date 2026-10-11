@@ -38,9 +38,24 @@ a_swp = Analysis(
     **common,
 )
 
+a_cal = Analysis(
+    [str(PY / "tools" / "osd_calibrate.py")],
+    datas=[],
+    hiddenimports=["pygrabber.dshow_graph", "comtypes.stream"],
+    **common,
+)
+a_osd = Analysis(
+    [str(PY / "tools" / "osd_sensor.py")],
+    datas=[],
+    hiddenimports=["pygrabber.dshow_graph", "comtypes.stream"],
+    **common,
+)
+
 pyz_app = PYZ(a_app.pure)
 pyz_rep = PYZ(a_rep.pure)
 pyz_swp = PYZ(a_swp.pure)
+pyz_cal = PYZ(a_cal.pure)
+pyz_osd = PYZ(a_osd.pure)
 
 exe_app = EXE(
     pyz_app,
@@ -72,6 +87,26 @@ exe_swp = EXE(
     upx=False,
 )
 
+exe_cal = EXE(
+    pyz_cal,
+    a_cal.scripts,
+    [],
+    exclude_binaries=True,
+    name="osd_calibrate",
+    console=True,
+    upx=False,
+)
+
+exe_osd = EXE(
+    pyz_osd,
+    a_osd.scripts,
+    [],
+    exclude_binaries=True,
+    name="osd_sensor",
+    console=True,
+    upx=False,
+)
+
 coll = COLLECT(
     exe_app,
     a_app.binaries,
@@ -82,6 +117,12 @@ coll = COLLECT(
     exe_swp,
     a_swp.binaries,
     a_swp.datas,
+    exe_cal,
+    a_cal.binaries,
+    a_cal.datas,
+    exe_osd,
+    a_osd.binaries,
+    a_osd.datas,
     strip=False,
     upx=False,
     name="BuddyBox",
