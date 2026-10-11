@@ -38,6 +38,10 @@ CHECK_TEXT = """
 
 
 def main():
+    # Windows 콘솔(cp949)에서 한글·기호 출력이 깨지지 않게
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("port", help="FC USB 포트 (COM7, /dev/ttyACM0) 또는 sitl")
     ap.add_argument("--baud", type=int, default=115200)
