@@ -188,15 +188,69 @@ python examples/person_follow.py --port COM5 --msp COM7  # Pro Micro + FC USB (�
 `--msp COMx`를 주면 ARM 확인(MSP_STATUS)과 센서 폴링이 같은 포트를 공유한다.
 설정 `alt_hold`·`pos_hold`를 켜면 HOVER/LOST/FOLLOW에서 센서 홀드가 동작하고, 센서가 없거나
 무효(범위 밖·0.4 s 이상 지연)이면 자동으로 기존 개루프 트림으로 돌아간다 — [person-follow.md](person-follow.md#하방-센서-홀드-mtf-02p) 참고.
-- **비행 중**: 현재 체인(PC → Pro Micro PPM → TX15 → ELRS)은 업링크만 있다. 후보 다운링크:
+### 비행 중 다운링크 — OSD 판독 (채택)
 
-| 경로 | 비고 |
+현재 체인(PC → Pro Micro PPM → TX15 → ELRS)은 업링크만 있다. **비행 중 값은 이미 PC가 받고 있는
+Walksnail 영상의 OSD 글자를 읽어서 얻는다** — 추가 하드웨어·조종기 개조 없음, 지연 = 영상 지연(수십 ms).
+
+Betaflight 2026.6.2 OSD 에 센서 전용 요소가 있다 ([osd_elements.c](https://github.com/betaflight/betaflight/blob/2026.6.2/src/main/osd/osd_elements.c)):
+
+| 요소 | CLI | 표시 | 내용 |
+|---|---|---|---|
+| `OSD_LIDAR_DIST` | `osd_lidar_dist_pos` | `RF:%3d` | `rangefinderGetLatestAltitude()` cm (MSP 58 과 동일 값), 무효 = `RF:---` |
+| `OSD_DEBUG2` | `osd_debug2_pos` | `D2 %5d %5d %5d %5d` | debug[4..7] — OPTICALFLOW 모드에서 회전 제거 X,Y · 필터링 X,Y |
+| `OSD_DEBUG` | `osd_debug_pos` | `DBG %5d ×4` | debug[0..3] (필요 시) |
+
+```
+# python tools/osd_calibrate.py --pos  가 출력하는 값. 셀 (col,row), 프로파일 1
+set osd_lidar_dist_pos = 2625     # RF  (1, 18)
+set osd_debug2_pos = 2634         # D2  (10, 18)
+set debug_mode = OPTICALFLOW
+save
+```
+
+위치값 인코딩([osd.h](https://github.com/betaflight/betaflight/blob/2026.6.2/src/main/osd/osd.h)):
+x 하위 5비트 + HD X 비트(bit 10, x ≥ 32), y << 5, 프로파일 플래그 bit 11~13, 타입 bit 14~15.
+HD 캔버스는 53 × 20 셀. 기존 `osd_vbat_pos = 2563` = (3, 16) 프로파일 1 로 검증.
+
+PC 쪽 (`python/`):
+
+| 모듈 | 역할 |
 |---|---|
-| ELRS 텔레메트리 + MSP 요청 → TX15 USB → PC | 추가 하드웨어 없음. 대역폭 작음. TX15 USB 시리얼 모드/Lua 중계 확인 필요 |
-| Walksnail 영상 링크 | MSP는 OSD 표시용일 뿐 원시 값 출력 없음 → 부적합 |
-| ESP32-C3 등 별도 무선 | 가장 직접적이나 75mm 1S에는 무게·전력 부담 |
+| `buddybox/vision/osd.py` | 흰 글자+검은 외곽선 마스크 → 셀 분할 → 글리프 템플릿 상관 분류 → `RF:`/`D2` 파싱. `osd_pos()` 인코더 |
+| `buddybox/follow/sensors.py` `OsdSensorSource` | 프레임마다 판독해 `RangeFlowSample` 생성 (SensorPoller 와 같은 `latest()`) → `HoverHold` 그대로 사용 |
+| `tools/osd_calibrate.py` | **벤치**: FC USB MSP 실측값을 정답으로 글리프 템플릿 학습 → `osd_glyphs.json` (격자 보정 포함). 폰트 팩 무관 |
+| `tools/osd_sensor.py` | **비행**: 카메라/녹화 영상에서 실시간 판독·CSV. `person_follow.py --osd-glyphs osd_glyphs.json` 으로 UI 에도 연결 |
 
-- 왕복 지연이 길므로 **빠른 안정화는 FC, PC는 목표·상위 판단·로깅**으로 분리한다.
+절차:
+1. CLI 에 위 설정 → 고글/VRX 화면 아래쪽에 `RF: 85` 와 `D2 ...` 가 보여야 한다.
+2. 벤치(배터리 + FC USB + VRX 캡처): `python tools/osd_calibrate.py --camera "UVC Camera" --msp COM7 --show`
+   센서 앞에서 손을 움직이고 기체를 밀어 숫자가 고루 바뀌게 60초 → 자가 검증 % 확인.
+3. 수동 비행: `python tools/osd_sensor.py --camera "UVC Camera" --glyphs osd_glyphs.json --csv flight.csv`
+   또는 `person_follow.py --osd-glyphs osd_glyphs.json` (상태 줄에 alt / v 표시, 세션 frames.jsonl 에 기록).
+   녹화해 두면 `--video session/raw.mp4` 로 사후 추출도 된다.
+
+제약: 값 해상도 cm · 정수 / 갱신율 = OSD 갱신(DisplayPort, 10~20 Hz 수준) / 글자 위에 다른 OSD 요소가
+겹치면 안 됨 / 캡처 해상도를 바꾸면 격자 재학습. 흰 벽·하늘 배경은 외곽선 조건으로 걸러진다.
+
+### 대안 (보류) — ELRS MSP-over-CRSF 중계
+
+조종기 Lua 가 `crossfireTelemetryPush(0x7A, {0xC8, 0xEA, status, size, cmd, …})` 로 MSP 요청을 보내고
+`crossfireTelemetryPop()` 으로 `0x7B` 응답을 받는 경로(Betaflight Lua 스크립트와 동일,
+[msp_shared.c](https://github.com/betaflight/betaflight/blob/master/src/main/telemetry/msp_shared.c):
+status 바이트 = seq 4비트 | start bit4 | version bit5~6 | error bit7, 청크 ≤ 57 B, XOR 체크섬).
+PC 로 넘기려면 조종기 시리얼 포트를 **LUA 모드**로 써야 하는데, EdgeTX 소스상 USB-VCP 에 LUA 모드가
+막혀 있지는 않지만 TX15 에서 동작 확인이 없고([EdgeTX #6569](https://github.com/EdgeTX/edgetx/issues/6569):
+TX15 AUX UART 매핑 오류·Lua 시리얼 실패 보고), 왕복 지연·대역폭도 OSD 경로보다 나쁘다. 진짜 MSP 가
+필요해질 때(설정 쓰기 등) 다시 본다.
+
+| 경로 | 판정 |
+|---|---|
+| **Walksnail OSD 판독** | 채택 — 하드웨어 추가 없음, 지연 최소, 정밀도 cm/정수 |
+| ELRS 텔레메트리 + MSP 요청 → TX15 Lua → USB | 보류 — 프로토콜은 확인, 조종기 시리얼 LUA 모드 미검증 |
+| ESP32-C3 등 별도 무선 | 보류 — 75 mm 1S 무게·전력 부담 |
+
+- 어느 경로든 왕복 지연이 있으므로 **빠른 안정화는 FC, PC는 목표·상위 판단·로깅**으로 분리한다.
 
 ## 8. 참고: 2026.6 업그레이드에서 바뀐 점 (이 기체 기준)
 

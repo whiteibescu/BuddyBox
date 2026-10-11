@@ -182,3 +182,6 @@
 - **Q. MTF-02P를 달았으니 그 값으로 호버링하는 기능을 추가해야 하는 게 아닐까?**
   → 맞다 — `MspSerial`(FC USB)로 `MSP_SONAR_ALTITUDE`·`MSP_DEBUG`를 20 Hz 폴링하는 `SensorPoller`와, 레인지파인더 고도 PID(`alt_hold`) + 광류 속도·드리프트로 roll/pitch를 잡는 위치 유지(`pos_hold`)를 묶은 `HoverHold`를 만들어 HOVER/LOST/FOLLOW에 통합했고(LOST 하강은 목표 고도를 m 단위로 낮춤, 센서 무효 시 기존 개루프 복귀), 단 PC↔FC 다운링크가 아직 USB뿐이어서 당장은 프롭 제거 벤치·테더 검증까지만 가능하다(`--msp COMx`, `tools/mtf02p_monitor.py --check`).
 
+- **Q. 벤치가 아니라 비행 중에 값이 들어오는 시점을 만들고 싶다 — 수동으로 날리면서 센서 값이 들어오는지 보려면?**
+  → 추가 하드웨어 없이 되는 경로는 **이미 PC로 받고 있는 Walksnail 영상의 OSD 글자를 읽는 것**이다 — Betaflight 2026.6.2에는 레인지파인더 전용 OSD 요소 `RF:%3d`(`osd_lidar_dist_pos`)와 debug[4..7]을 보여주는 `D2 ...`(`osd_debug2_pos`)가 있어 이를 화면 아래 행에 놓고(`2625`, `2634`), 벤치에서 FC USB MSP 실측값을 정답으로 글리프 템플릿을 한 번 학습한 뒤(`tools/osd_calibrate.py`), 비행 중에는 `tools/osd_sensor.py` 또는 `person_follow.py --osd-glyphs` 가 프레임마다 숫자를 읽어 `RangeFlowSample` 로 만들어 준다(지연 = 영상 지연, 해상도 cm/정수); ELRS MSP-over-CRSF 를 조종기 Lua 로 중계하는 경로는 프로토콜(0x7A/0x7B, status 바이트, 57 B 청크)은 확인했지만 TX15 시리얼 LUA 모드가 미검증이라 보류했다.
+

@@ -65,6 +65,67 @@ def compute_sample(t, seq, alt_m, debug, flow_x_slot=FLOW_SLOT_X, flow_y_slot=FL
                            debug=tuple(debug))
 
 
+class OsdSensorSource:
+    """영상 OSD 판독으로 샘플을 만드는 센서 소스 (SensorPoller 와 같은 latest() 인터페이스).
+
+    파이프라인이 새 프레임마다 feed(frame, now) 를 호출한다. 다운링크 하드웨어 없이
+    비행 중 값을 받는 경로 — buddybox.vision.osd 참고.
+    """
+
+    def __init__(self, reader, invert_x=False, invert_y=False, every=1):
+        self.reader = reader
+        self.invert_x = invert_x
+        self.invert_y = invert_y
+        self.every = max(1, int(every))
+        self._lock = Lock()
+        self._latest = None
+        self._seq = 0
+        self._frames = 0
+        self.errors = 0
+        self.last_error = ""
+        self.last_reading = None
+
+    @property
+    def description(self):
+        return "osd"
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def latest(self):
+        with self._lock:
+            return self._latest
+
+    def feed(self, frame, now=None):
+        self._frames += 1
+        if (self._frames - 1) % self.every:
+            return None
+        now = time.monotonic() if now is None else now
+        try:
+            r = self.reader.read(frame)
+        except Exception as exc:
+            self.errors += 1
+            self.last_error = str(exc)
+            return None
+        self.last_reading = r
+        if not r.ok:
+            self.errors += 1
+            self.last_error = r.error
+            with self._lock:
+                if self._latest is not None:
+                    self._latest.error = r.error
+            return None
+        self._seq += 1
+        sample = compute_sample(now, self._seq, r.alt_m, r.debug, invert_x=self.invert_x,
+                                invert_y=self.invert_y)
+        with self._lock:
+            self._latest = sample
+        return sample
+
+
 class SensorPoller:
     """백그라운드 스레드로 거리+플로우를 주기 폴링해 최신 샘플을 보관한다.
 

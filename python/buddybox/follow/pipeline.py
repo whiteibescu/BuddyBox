@@ -401,6 +401,8 @@ class FollowPipeline:
                     motion, prev_small = motion_score(frame, prev_small)
                 except cv2.error:
                     motion = 0.0
+                if self.sensor is not None and hasattr(self.sensor, "feed"):
+                    self.sensor.feed(frame, now)       # OSD 판독 센서 소스
 
             dets, det_seq, infer_ms, boxes = self.worker.latest()
             if boxes is not None and det_seq != last_det_seq:

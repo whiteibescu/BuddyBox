@@ -775,7 +775,7 @@ class MainWindow(QMainWindow):
             return
         self._ensure_detector()
         verifier = make_arm_verifier(self.port_box.currentText(), self.args.sitl_host, self.args.msp)
-        sensor = make_sensor_poller(verifier, hz=self.args.sensor_hz)
+        sensor = make_sensor_poller(verifier, hz=self.args.sensor_hz, osd_glyphs=self.args.osd_glyphs)
         self.pipeline = FollowPipeline(self.source, self.detector, self.backend, self.cfg,
                                        conf=self.args.conf, every=self.args.every,
                                        label="marker" if self.args.detector == "aruco" else "person",

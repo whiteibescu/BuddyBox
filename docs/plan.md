@@ -67,9 +67,13 @@ PC → Pro Micro → TX15 Max(트레이너) → ELRS → Betaflight 관제 체�
 - [ ] 기체 하단 장착 (마운트 + 랜딩기어), 플로우 방향 보정 (`opticalflow_rotation`/`flip_x`) — `tools/mtf02p_monitor.py --check`
 - [x] PC 판독 코드: `MspSerial`(USB) + `SensorPoller` — `MSP_SONAR_ALTITUDE`(58) + `MSP_DEBUG`(254), 벤치 모니터
 - [x] 센서 홀드 제어: `HoverHold` — 레인지파인더 고도 PID(`alt_hold`) + 광류 위치 유지(`pos_hold`), HOVER/LOST/FOLLOW 통합, 무효 시 개루프 복귀
-- [ ] 벤치 검증 (프롭 제거, `--msp COMx`): 거리값·플로우 부호 → `flow_invert_x/y` 확정, 고도 PID 부호 확인
+- [x] 비행 중 다운링크 경로 결정 → **Walksnail OSD 판독** (`OSD_LIDAR_DIST` + `OSD_DEBUG2` 를 영상에서 OCR, 추가 하드웨어 없음). ELRS MSP-over-CRSF Lua 중계는 프로토콜만 확인하고 보류
+- [x] OSD 판독 구현: `vision/osd.py`(격자·글리프 템플릿·파서) + `OsdSensorSource` + `tools/osd_calibrate.py`(벤치 MSP 정답 학습) + `tools/osd_sensor.py`(비행 중 실시간/CSV)
+- [ ] FC CLI: `osd_lidar_dist_pos = 2625`, `osd_debug2_pos = 2634`, `debug_mode = OPTICALFLOW` → 고글에 `RF:`/`D2` 표시 확인, VRX 캡처 영상에 OSD 포함되는지 확인
+- [ ] 벤치 캘리브레이션 (`osd_calibrate.py --msp COMx`) → `osd_glyphs.json`, 자가 검증 95% 이상
+- [ ] 수동 비행으로 `osd_sensor.py` 값 수신 확인 (거리·플로우 부호 → `flow_invert_x/y`)
+- [ ] 벤치 검증 (프롭 제거, `--msp COMx`): 고도 PID 부호 확인 → 이후 `--osd-glyphs` 로 비행 중 센서 홀드
 - [ ] SITL: 가상 레인지파인더/플로우 샘플 주입으로 홀드 루프 검증
-- [ ] 비행 중 다운링크 경로 결정 (ELRS 텔레메트리 + MSP 요청 → TX15 USB 후보) — 없으면 센서 홀드는 USB 벤치/테더 전용
 - 상세: [mtf02p-sensor.md](mtf02p-sensor.md)
 
 ## Phase 7 — SITL/Gazebo 시뮬레이션 (sim-to-real) 🔄 진행 중

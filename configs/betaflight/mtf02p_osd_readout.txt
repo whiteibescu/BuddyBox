@@ -1,0 +1,6 @@
+# MTF-02P OSD readout for BuddyBox (Betaflight 2026.6.2, HD canvas 53x20, profile 1)
+# Paste into CLI after the main restore. Values from: python tools/osd_calibrate.py --pos
+set osd_lidar_dist_pos = 2625
+set osd_debug2_pos = 2634
+set debug_mode = OPTICALFLOW
+save

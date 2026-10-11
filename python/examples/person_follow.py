@@ -127,6 +127,8 @@ def parse_args():
     ap.add_argument("--msp", default="",
                     help="FC MSP 연결: COMx (USB 벤치, MTF-02P 센서 판독 + ARM 확인) / sitl / 비움=--port sitl이면 sitl")
     ap.add_argument("--sensor-hz", type=float, default=20.0, help="MSP 센서 폴링 주기 (Hz)")
+    ap.add_argument("--osd-glyphs", default="",
+                    help="OSD 판독 글리프 파일(osd_calibrate.py 결과). 지정하면 영상 OSD에서 센서 값을 읽는다 (비행 중 다운링크)")
     ap.add_argument("--sitl-host", default=os.environ.get("BUDDYBOX_SITL_HOST", "127.0.0.1"))
     ap.add_argument("--config", default=str(DEFAULT_CONFIG))
     ap.add_argument("--rec-dir", default=str(DEFAULT_REC_DIR))
@@ -178,8 +180,12 @@ def make_arm_verifier(spec, sitl_host, msp_spec=""):
     return make_msp_client(spec, msp_spec, sitl_host)
 
 
-def make_sensor_poller(client, hz=20.0):
-    """MSP 클라이언트가 있으면 MTF-02P 폴러를 만든다 (ARM 확인용 클라이언트와 공유)."""
+def make_sensor_poller(client, hz=20.0, osd_glyphs=""):
+    """센서 소스: --osd-glyphs 가 있으면 영상 OSD 판독, 아니면 MSP 클라이언트(있을 때) 폴러."""
+    if osd_glyphs:
+        from buddybox.follow.sensors import OsdSensorSource
+        from buddybox.vision.osd import GlyphBook, OsdReader
+        return OsdSensorSource(OsdReader(GlyphBook.load(osd_glyphs)))
     if client is None:
         return None
     return SensorPoller(client, hz=hz)
@@ -527,7 +533,7 @@ class App:
             return
         self._ensure_detector()
         verifier = make_arm_verifier(self.port_var.get(), self.args.sitl_host, self.args.msp)
-        sensor = make_sensor_poller(verifier, hz=self.args.sensor_hz)
+        sensor = make_sensor_poller(verifier, hz=self.args.sensor_hz, osd_glyphs=self.args.osd_glyphs)
         self.pipeline = FollowPipeline(self.source, self.detector, self.backend, self.cfg,
                                        conf=self.args.conf, every=self.args.every,
                                        label="marker" if self.args.detector == "aruco" else "person",

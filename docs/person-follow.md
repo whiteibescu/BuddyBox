@@ -236,9 +236,10 @@ python ..\tools\mtf02p_monitor.py COM7 --check      # 값만 보기 + 장착 방
 - **센서 없음 / 무효 / 지연** → 그 즉시 기존 개루프(트림, 영상 고도 보조)로 돌아간다. HUD 와 상태 줄에
   `alt 0.82m -> 0.80m` (녹색 = 홀드 중, 빨강 = 센서 무효) 와 `v +0.03/-0.01 m/s` 가 표시되고, `frames.jsonl` 의 `hold` 에 기록된다.
 
-> **현재 한계**: PC↔FC 다운링크가 USB 뿐이라 센서 홀드는 **프롭 제거 벤치 / 테더 상태**에서만 쓸 수 있다.
-> 비행 중 사용은 ELRS 텔레메트리 경로가 생긴 뒤의 일이다 ([plan.md](plan.md) Phase 9). 왕복 지연이 길어지면
-> `alt_kd` 를 낮추고 `sensor_timeout_s` 를 늘려야 한다.
+> **비행 중 값 받기**: MSP(USB)는 벤치용이고, 비행 중에는 **영상 OSD 판독**으로 같은 값을 받는다 —
+> `python person_follow.py --osd-glyphs osd_glyphs.json` (글리프 파일은 벤치에서 `tools/osd_calibrate.py` 로 한 번 학습).
+> FC 설정·절차는 [mtf02p-sensor.md](mtf02p-sensor.md#비행-중-다운링크--osd-판독-채택) 참고. OSD 갱신율이 10~20 Hz 수준이라
+> `alt_kd` 는 낮게, `sensor_timeout_s` 는 0.5 s 이상으로 둔다.
 
 벤치 순서: ① `mtf02p_monitor.py --check` 로 거리·플로우 부호 확인 → `flow_invert_x/y` ② UI 에서 `--msp COMx` 로 연결,
 STANDBY 에서 상태 줄에 `alt` 가 보이는지 ③ 프롭 제거·ARM 후 HOVER, 기체를 손으로 올리면 스로틀 µs 가 내려가고
