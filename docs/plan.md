@@ -58,6 +58,17 @@ PC → Pro Micro → TX15 Max(트레이너) → ELRS → Betaflight 관제 체�
 - [ ] 실기: HOVER 트림 맞추기 → FOLLOW(yaw만) → 거리 유지 → 고도 보조 순으로 단계 활성화
 - 상세: [person-follow.md](person-follow.md)
 
+## Phase 9 — 하방 센서 MTF-02P (옵티컬 플로우 + 레인지파인더) 🔄 진행 중
+
+- [x] 배선·납땜: G/V/R/T → G/5V/T2/R2 (TX/RX 교차), 센서 전원 확인
+- [x] serialpassthrough + MicoAssistant로 센서 데이터 확인, 출력 프로토콜 MicoLink → **MSP**
+- [x] 2025.12.5에서 MT 드라이버 미포함으로 인식 실패 원인 규명 → **Betaflight 2026.6.2** 재플래싱
+- [x] UART2 = MSP, `feature RANGEFINDER/OPTICALFLOW`, `MTF02P`/`MT` 설정 → Sonar·Debug 그래프 수신 확인
+- [ ] 기체 하단 장착 (마운트 + 랜딩기어), 플로우 방향 보정 (`opticalflow_rotation`/`flip_x`)
+- [ ] PC 판독 코드: `MSP_SONAR_ALTITUDE`(58) + `MSP_DEBUG`(254) — USB 벤치부터
+- [ ] 비행 중 다운링크 경로 결정 (ELRS 텔레메트리 + MSP 요청 → TX15 USB 후보)
+- 상세: [mtf02p-sensor.md](mtf02p-sensor.md)
+
 ## Phase 7 — SITL/Gazebo 시뮬레이션 (sim-to-real) 🔄 진행 중
 
 - [x] `BuddyBoxSitl` UDP 백엔드 (`buddybox/sitl.py` — SITL 포트 9004, 실물과 동일 API)
