@@ -7,3 +7,4 @@ dist/
 .claude/settings.local.json
 python/models/
 python/recordings/
+packaging/build_log.txt
