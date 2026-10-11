@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,6 +42,10 @@ def default_threads():
 
 
 def find_default_model():
+    if getattr(sys, "frozen", False):
+        bundled = Path(getattr(sys, "_MEIPASS", "")) / "models" / "rfdetr_nano_coco.onnx"
+        if bundled.exists():
+            return bundled
     env = os.environ.get("BUDDYBOX_MODEL")
     if env and Path(env).exists():
         return Path(env)
@@ -167,6 +172,46 @@ class HogDetector:
             out.append(Detection("person", 1, conf,
                                  int(x / scale), int(y / scale), int((x + w) / scale), int((y + h) / scale)))
         out.sort(key=lambda d: -d.conf)
+        return out
+
+
+class ArucoDetector:
+    name = "aruco"
+    provider = "CPU"
+    threads = None
+    classes = ["marker"]
+
+    def __init__(self, dictionary="apriltag_36h11", marker_id=-1):
+        import cv2
+
+        const = "DICT_" + dictionary.upper()
+        for cand in (const, const.replace("36H11", "36h11")):
+            if hasattr(cv2.aruco, cand):
+                d = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, cand))
+                break
+        else:
+            raise ValueError(f"알 수 없는 aruco 사전: {dictionary}")
+        self.detector = cv2.aruco.ArucoDetector(d, cv2.aruco.DetectorParameters())
+        self.marker_id = marker_id
+
+    def warmup(self):
+        pass
+
+    def __call__(self, frame, threshold):
+        import cv2
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        corners, ids, _ = self.detector.detectMarkers(gray)
+        out = []
+        if ids is None:
+            return out
+        for c, mid in zip(corners, ids.flatten()):
+            if self.marker_id >= 0 and int(mid) != self.marker_id:
+                continue
+            xs, ys = c[0][:, 0], c[0][:, 1]
+            out.append(Detection("marker", int(mid), 1.0,
+                                 int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())))
+        out.sort(key=lambda d: -d.height)
         return out
 
 

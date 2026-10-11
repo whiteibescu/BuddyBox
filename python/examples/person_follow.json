@@ -1,5 +1,5 @@
 {
-  "hover_throttle": -0.25,
+  "hover_throttle": -0.075,
   "throttle_mode": "absolute",
   "lateral_axis": "yaw",
   "lateral_kp": 0.6,
@@ -25,7 +25,7 @@
   "invert_throttle": false,
   "distance_hold": true,
   "altitude_assist": true,
-  "trim_learning": true,
+  "trim_learning": false,
   "trim_learn_rate": 0.15,
   "trim_learn_up": 0.1,
   "trim_learn_down": 0.3,

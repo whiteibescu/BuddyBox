@@ -8,6 +8,10 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+for _s in (sys.stdout, sys.stderr):
+    if _s is not None and hasattr(_s, "reconfigure"):
+        _s.reconfigure(errors="replace")
+
 from buddybox.follow.controller import FollowConfig
 from buddybox.follow.session import RAW_VIDEO, load_session
 

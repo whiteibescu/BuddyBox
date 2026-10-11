@@ -3,6 +3,9 @@ setlocal
 cd /d "%~dp0..\python\examples"
 set PY=C:\Users\User\AppData\Local\Programs\Python\Python312\python.exe
 if not exist "%PY%" set PY=python
+rem Qt(PySide6) UI가 설치돼 있으면 그쪽을, 아니면 tkinter UI
+set APP=person_follow_qt.py
+"%PY%" -c "import PySide6" >nul 2>&1 || set APP=person_follow.py
 set VRX=--camera "UVC Camera" --preset vrx1080
 set WEBCAM=--camera "HD Webcam" --preset webcam720
 
@@ -29,11 +32,11 @@ if %N%==6 goto list
 goto menu
 
 :vrx_sim
-"%PY%" person_follow.py %VRX% --port sim %*
+"%PY%" %APP% %VRX% --port sim %*
 goto done
 
 :vrx_real
-"%PY%" person_follow.py %VRX% --port auto %*
+"%PY%" %APP% %VRX% --port auto %*
 goto done
 
 :vrx_sitl
@@ -44,19 +47,19 @@ if not defined SITL_IP (
   goto done
 )
 echo WSL IP = %SITL_IP%
-"%PY%" person_follow.py %VRX% --port sitl --sitl-host %SITL_IP% %*
+"%PY%" %APP% %VRX% --port sitl --sitl-host %SITL_IP% %*
 goto done
 
 :webcam
-"%PY%" person_follow.py %WEBCAM% --port sim %*
+"%PY%" %APP% %WEBCAM% --port sim %*
 goto done
 
 :file
-"%PY%" person_follow.py --camera "" --preset raw --port sim --no-autoconnect %*
+"%PY%" %APP% --camera "" --preset raw --port sim --no-autoconnect %*
 goto done
 
 :list
-"%PY%" person_follow.py --list
+"%PY%" %APP% --list
 echo.
 pause
 goto menu

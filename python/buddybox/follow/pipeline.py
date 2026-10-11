@@ -101,6 +101,7 @@ class FollowPipeline:
         self._lock = Lock()
         self._sess_lock = Lock()
         self._annotated = None
+        self._display = None
         self._tele = {"mode": Mode.STANDBY.value, "status": Status.STANDBY.value,
                       "fps": 0.0, "infer_ms": 0.0, "detector": getattr(detector, "name", "?")}
         self._running = False
@@ -255,6 +256,10 @@ class FollowPipeline:
     def latest(self):
         with self._lock:
             return self._annotated, dict(self._tele)
+
+    def latest_display(self):
+        with self._lock:
+            return self._display, dict(self._tele)
 
     def _event(self, kind, **data):
         with self._lock:
@@ -447,6 +452,8 @@ class FollowPipeline:
                 if annotated is not None:
                     self._annotated = annotated
                 self._tele = tele
+                if frame is not None:
+                    self._display = (frame, boxes_now, track)
 
             elapsed = time.monotonic() - t_start
             if elapsed < interval:

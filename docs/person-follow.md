@@ -24,7 +24,8 @@ VRX Pro (UVC 1080p30) ─▶ UvcSource ─▶ DetectWorker(RF-DETR ONNX, 별도 
 | `python/buddybox/follow/state.py` | 모드/상태 감독, LOST 하강 (`FlightSupervisor`) |
 | `python/buddybox/follow/pipeline.py` | 캡처→검출→추적→제어→송신 스레드, 세션 기록 연동 |
 | `python/buddybox/follow/session.py` | 세션 기록 포맷 (`Session`, `load_session`) |
-| `python/examples/person_follow.py` | tkinter UI 앱 |
+| `python/examples/person_follow.py` | tkinter UI 앱 (인자 파싱·검출기/백엔드 생성·튜닝 항목 정의는 Qt 버전과 공유) |
+| `python/examples/person_follow_qt.py` | **Qt(PySide6) 대시보드 UI** — 같은 인자, 같은 설정 파일. `pip install -r requirements-qt.txt` |
 | `python/examples/person_follow.json` | 튜닝 값 (UI "설정 저장"으로 갱신) |
 | `python/tools/session_report.py` | 세션 요약 리포트 + 프레임 격자 + 그래프 + CSV |
 | `python/tools/session_replay.py` | 기록된 검출로 다른 PID 설정을 오프라인 재실행 (개루프 비교) |
@@ -88,6 +89,20 @@ python person_follow.py --camera rec.mp4 --preset raw            # 녹화 파일
 ```
 
 ## UI
+
+두 가지 UI가 있고 기능·단축키·설정 파일은 같다. `tools/person_follow.bat` 는 PySide6 가 설치돼 있으면 Qt 버전을 띄운다.
+
+| | `person_follow.py` (tkinter) | `person_follow_qt.py` (PySide6) |
+|---|---|---|
+| 의존성 | 표준 라이브러리 | `pip install -r requirements-qt.txt` |
+| 레이아웃 | 영상 + 우측 패널 한 덩어리 | 지상관제(GCS) 정석: 상단 **연결 툴바** · 중앙 **영상** · 우측 **비행 제어 / 튜닝 도크**(떼어내기·이동 가능) · 하단 **로그 도크** · **상태바**(검출기·영상·UI fps·REC) |
+| 테마 | 기본 | Fusion 다크, 모드별 색 표시(STANDBY 회색 / HOVER 파랑 / FOLLOW 초록) |
+| 튜닝 | 슬라이더 | 슬라이더 + 스핀박스 동기화, PID 는 축별 그룹 |
+| 리포트 생성 | UI 멈춤 | 백그라운드 스레드 |
+
+- **miniforge/conda 주의**: Qt 6.11+ 는 Windows 시스템 ICU(`System32\icuuc.dll`)를 쓰는데 conda 의 `Library\bin\icuuc.dll`
+  이 먼저 잡혀 `DLL load failed while importing QtCore: 지정된 프로시저를 찾을 수 없습니다` 가 난다.
+  `person_follow_qt.py` 는 시스템 ICU 를 먼저 올리는 shim 을 넣어 두었다 (별도 venv 에서는 문제 없음).
 
 - **연결**: 카메라(이름 콤보, 프리셋), 백엔드(`sim` / `sitl` / `auto` / COMx).
 - **ARM / DISARM**: AUX1(CH5)을 1900/1000µs로 보낸다. `ARM` 은 실수 방지를 위해 **STANDBY 에서 3초 안에 두 번** 눌러야

@@ -5,12 +5,18 @@ import sys
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from threading import Thread
+from tkinter import filedialog, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from buddybox import BuddyBox
+for _s in (sys.stdout, sys.stderr):
+    if _s is not None and hasattr(_s, "reconfigure"):
+        _s.reconfigure(errors="replace")
+
+from buddybox import BuddyBox, find_promicro_port
 from buddybox.follow.controller import FollowConfig
+from buddybox.follow.overlay import draw_overlay
 from buddybox.follow.pipeline import AUTO_SESSION_MODES, FollowPipeline
 from buddybox.follow.state import Mode
 from buddybox.msp import SITL_MSP_PORT, MspClient
@@ -24,12 +30,19 @@ from buddybox.vision.capture import (
     open_source,
     probe_devices,
 )
-from buddybox.vision.detector import HogDetector, OnnxDetector, find_default_model
+from buddybox.vision.detector import ArucoDetector, HogDetector, OnnxDetector, find_default_model
 
-HERE = Path(__file__).resolve().parent
-DEFAULT_CONFIG = HERE / "person_follow.json"
-DEFAULT_REC_DIR = HERE.parent / "recordings"
-REPORT_TOOL = HERE.parent / "tools" / "session_report.py"
+FROZEN = getattr(sys, "frozen", False)
+if FROZEN:
+    BASE = Path(sys.executable).resolve().parent
+    DEFAULT_CONFIG = BASE / "person_follow.json"
+    DEFAULT_REC_DIR = BASE / "recordings"
+    REPORT_TOOL = BASE / "session_report.exe"
+else:
+    HERE = Path(__file__).resolve().parent
+    DEFAULT_CONFIG = HERE / "person_follow.json"
+    DEFAULT_REC_DIR = HERE.parent / "recordings"
+    REPORT_TOOL = HERE.parent / "tools" / "session_report.py"
 
 TRIM_TAB = [
     ("hover_throttle", "호버 스로틀", -1.0, 1.0, 0.005),
@@ -87,7 +100,9 @@ def parse_args():
     ap.add_argument("--camera", default=VRX_DEVICE_NAME, help="장치 이름 일부 / 인덱스 / 동영상 파일 경로")
     ap.add_argument("--preset", choices=list(PRESETS), default="vrx1080")
     ap.add_argument("--cap-backend", default=default_backend(), help="dshow(권장)/msmf/v4l2/any")
-    ap.add_argument("--detector", choices=["onnx", "hog"], default="onnx")
+    ap.add_argument("--detector", choices=["onnx", "hog", "aruco"], default="onnx")
+    ap.add_argument("--aruco-dict", default="apriltag_36h11", help="aruco 사전 (예: apriltag_36h11, 4x4_50)")
+    ap.add_argument("--aruco-id", type=int, default=-1, help="추적할 마커 id (-1 = 아무거나)")
     ap.add_argument("--model", default=None, help="RF-DETR ONNX 경로 (기본: BUDDYBOX_MODEL 또는 자동 탐색)")
     ap.add_argument("--provider", choices=["cpu", "cuda", "tensorrt"], default="cpu")
     ap.add_argument("--threads", type=int, default=None,
@@ -110,6 +125,8 @@ def parse_args():
 
 
 def make_detector(args):
+    if args.detector == "aruco":
+        return ArucoDetector(dictionary=args.aruco_dict, marker_id=args.aruco_id)
     if args.detector == "hog":
         return HogDetector()
     model = Path(args.model) if args.model else find_default_model()
@@ -157,6 +174,7 @@ class App:
         self.source = None
         self.backend = None
         self.detector = None
+        self._connecting = False
         self.photo = None
         self.display_size = (960, 540)
         self._syncing = False
@@ -198,8 +216,13 @@ class App:
         conn = ttk.LabelFrame(panel, text="연결", padding=6)
         conn.pack(fill="x")
         ttk.Label(conn, text="카메라").grid(row=0, column=0, sticky="w")
-        self.camera_var = tk.StringVar(value=self.args.camera)
-        self.camera_box = ttk.Combobox(conn, textvariable=self.camera_var, width=24, values=device_names())
+        names = device_names()
+        camera = self.args.camera
+        if camera == VRX_DEVICE_NAME and names and not any(camera.lower() in n.lower() for n in names):
+            camera = names[0]
+        self.camera_var = tk.StringVar(value=camera)
+        self.camera_box = ttk.Combobox(conn, textvariable=self.camera_var, width=24, values=names)
+        self.camera_box.config(postcommand=lambda: self.camera_box.config(values=device_names()))
         self.camera_box.grid(row=0, column=1, sticky="ew", pady=2)
         ttk.Label(conn, text="프리셋").grid(row=1, column=0, sticky="w")
         self.preset_var = tk.StringVar(value=self.args.preset)
@@ -213,12 +236,25 @@ class App:
         ttk.Button(row, text="탐색", command=self.scan_devices, width=6).pack(side="left", padx=(4, 0))
 
         ttk.Label(conn, text="백엔드").grid(row=3, column=0, sticky="w")
-        self.port_var = tk.StringVar(value=self.args.port)
+        port = self.args.port
+        if port == "sim":
+            real = find_promicro_port()
+            if real:
+                port = real
+        self.port_var = tk.StringVar(value=port)
         self.port_box = ttk.Combobox(conn, textvariable=self.port_var, width=24,
                                      values=["sim", "sitl", "auto"] + serial_ports())
+        self.port_box.config(postcommand=lambda: self.port_box.config(
+            values=["sim", "sitl", "auto"] + serial_ports()))
         self.port_box.grid(row=3, column=1, sticky="ew", pady=2)
         self.backend_btn = ttk.Button(conn, text="백엔드 연결", command=self.toggle_backend)
         self.backend_btn.grid(row=4, column=0, columnspan=2, sticky="ew", pady=2)
+        ttk.Label(conn, text="검출").grid(row=5, column=0, sticky="w")
+        self.detector_var = tk.StringVar(value="AprilTag" if self.args.detector == "aruco" else "사람")
+        det_box = ttk.Combobox(conn, textvariable=self.detector_var, state="readonly", width=24,
+                               values=["사람", "AprilTag"])
+        det_box.grid(row=5, column=1, sticky="ew", pady=2)
+        det_box.bind("<<ComboboxSelected>>", lambda e: self._on_detector())
         conn.columnconfigure(1, weight=1)
 
         arm = ttk.LabelFrame(panel, text="ARM", padding=4)
@@ -386,7 +422,7 @@ class App:
         try:
             self.backend = make_backend(self.port_var.get(), self.args.sitl_host)
         except Exception as exc:
-            messagebox.showerror("백엔드", str(exc))
+            self.info(f"백엔드 오류: {exc}")
             return
         self.backend_btn.config(text=f"백엔드 해제 ({self.backend.port})")
         self.arm_btn.config(state="normal")
@@ -401,20 +437,45 @@ class App:
             self.cam_btn.config(text="카메라 연결")
             self.info("카메라 해제")
             return
-        spec = self.camera_var.get().strip()
-        try:
-            self._ensure_detector()
-            self.source = open_source(spec, self.preset_var.get(), self.args.cap_backend)
-            first = self.source.wait_first()
-        except Exception as exc:
-            if self.source is not None:
-                self.source.release()
-                self.source = None
-            messagebox.showerror("카메라", str(exc))
+        if self._connecting:
             return
+        spec = self.camera_var.get().strip()
+        preset = self.preset_var.get()
+        self._connecting = True
+        self.cam_btn.config(state="disabled", text="연결 중…")
+        self.info("카메라 연결 중…")
+
+        def work():
+            src = None
+            try:
+                det = self.detector or make_detector(self.args)
+                src = open_source(spec, preset, self.args.cap_backend)
+                first = src.wait_first()
+            except Exception as exc:
+                if src is not None:
+                    src.release()
+                self.root.after(0, self._camera_failed, exc)
+                return
+            self.root.after(0, self._camera_ready, det, src, first)
+
+        Thread(target=work, daemon=True).start()
+
+    def _camera_failed(self, exc):
+        self._connecting = False
+        self.cam_btn.config(state="normal", text="카메라 연결")
+        self.info(f"카메라 오류: {exc}")
+
+    def _camera_ready(self, det, src, first):
+        self._connecting = False
+        if self.detector is None:
+            self.detector = det
+            threads = getattr(det, "threads", None)
+            self.info(f"검출기: {det.name} ({det.provider}"
+                      f"{', threads=' + str(threads) if threads else ''})")
+        self.source = src
         H, W = first.shape[:2]
-        self.cam_btn.config(text="카메라 해제")
-        self.info(f"영상: {self.source.description} {W}x{H} @ {self.source.fps:.0f}fps")
+        self.cam_btn.config(state="normal", text="카메라 해제")
+        self.info(f"영상: {src.description} {W}x{H} @ {src.fps:.0f}fps")
         self._maybe_start_pipeline()
 
     def pick_file(self):
@@ -435,9 +496,11 @@ class App:
     def _maybe_start_pipeline(self):
         if self.source is None or self.backend is None or self.pipeline is not None:
             return
+        self._ensure_detector()
         verifier = make_arm_verifier(self.port_var.get(), self.args.sitl_host)
         self.pipeline = FollowPipeline(self.source, self.detector, self.backend, self.cfg,
                                        conf=self.args.conf, every=self.args.every,
+                                       label="marker" if self.args.detector == "aruco" else "person",
                                        rec_dir=self.rec_dir,
                                        auto_session=self.auto_session_mode(),
                                        annotated_video=self.args.annotated_video,
@@ -561,6 +624,34 @@ class App:
         self.panic_btn.config(text="PANIC (Space) — 오프셋 0" if self.cfg.offset_mode
                               else "PANIC (Space) — 스로틀 최소")
 
+    def _config_path_for(self, det):
+        base = Path(self.args.config)
+        if det == "aruco":
+            return base if "aruco" in base.name else base.with_name("person_follow_aruco.json")
+        return base.with_name("person_follow.json") if "aruco" in base.name else base
+
+    def _on_detector(self):
+        want = "aruco" if self.detector_var.get() == "AprilTag" else "onnx"
+        if want == self.args.detector:
+            return
+        was_running = self.pipeline is not None
+        if was_running:
+            self._teardown_pipeline()
+        self.detector = None
+        self.args.detector = want
+        cfg_path = self._config_path_for(want)
+        self.args.config = str(cfg_path)
+        self.cfg = FollowConfig.load(cfg_path)
+        self._push_cfg_to_ui()
+        self.info(f"검출기 전환: {self.detector_var.get()} · 설정 {cfg_path.name}")
+        if was_running and self.source is not None and self.backend is not None:
+            try:
+                self._ensure_detector()
+            except Exception as exc:
+                self.info(f"검출기 오류: {exc}")
+                return
+            self._maybe_start_pipeline()
+
     def _on_auto_session(self):
         if self.pipeline is not None:
             self.pipeline.set_auto_session(self.auto_session_mode())
@@ -630,7 +721,8 @@ class App:
             return
         self.info(f"리포트 생성 중: {target.name}")
         self.root.update_idletasks()
-        proc = subprocess.run([sys.executable, str(REPORT_TOOL), str(target), "--sheet", "--plot"],
+        cmd = [str(REPORT_TOOL)] if FROZEN else [sys.executable, str(REPORT_TOOL)]
+        proc = subprocess.run(cmd + [str(target), "--sheet", "--plot"],
                               capture_output=True, text=True, encoding="utf-8", errors="replace")
         tail = (proc.stdout or proc.stderr or "").strip().splitlines()[-3:]
         self.info("리포트: " + (" | ".join(tail) if tail else f"exit {proc.returncode}"))
@@ -680,13 +772,15 @@ class App:
         import cv2
         from PIL import Image, ImageTk
 
-        frame, tele = self.pipeline.latest()
-        if frame is not None:
+        disp, tele = self.pipeline.latest_display()
+        if disp is not None:
+            frame, boxes, track = disp
             cw, ch = self.display_size
             fh, fw = frame.shape[:2]
             scale = min(cw / fw, ch / fh)
             size = (max(1, int(fw * scale)), max(1, int(fh * scale)))
             small = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
+            draw_overlay(small, boxes, track, self.cfg, tele)
             img = Image.fromarray(cv2.cvtColor(small, cv2.COLOR_BGR2RGB))
             self.photo = ImageTk.PhotoImage(img)
             self.canvas.delete("all")

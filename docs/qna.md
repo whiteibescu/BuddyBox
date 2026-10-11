@@ -124,6 +124,26 @@
 - **Q. PID 도 다시 세팅해야 할 것 같고, 전체적으로 디버깅할 수 있게 영상 프레임도 분석하기 좋은 구조로 만들 수 있나?**
   → STANDBY 를 벗어나면 세션 폴더(`recordings/session_*`)에 원본 영상 raw.mp4 + 제어 스텝별 frames.jsonl(검출 박스·트랙·오차·PID 출력·µs·트림) + events.jsonl + 설정/메타가 자동 기록되고, `tools/session_report.py`(요약 report.md, 프레임 격자 sheet.png, 시계열 plot.png, CSV)와 `tools/session_replay.py`(같은 검출 입력에 다른 PID 설정을 개루프로 다시 돌려 비교)로 비행 없이도 분석·재튜닝할 수 있다.
 
+
+## 2026-09-11
+
+- **Q. 지금 만들어놓은 것 기준으로 exe로 패키징하면 무거울까?**
+  → onnxruntime·opencv·numpy 때문에 PyInstaller 기준 onedir 300~400MB / onefile 150~250MB+모델이 나와 무겁긴 하지만 가능하며, onefile은 시작이 5~10초 느려지므로 배포한다면 onedir(폴더 zip)을, 개인 사용이면 venv+bat 런처를 권한다.
+
+- **Q. QR코드나 AprilTag 기준 호버링 성공부터 시작해야 할까?**
+  → 그렇다 — 현재 문제의 절반이 검출 노이즈(0명 프레임 36.5%, 추론 122ms)라 제어 튜닝과 분리가 안 되는데, ArUco/AprilTag는 밀리초 검출에 거의 안 놓치고 태그 실측 크기로 픽셀→미터 환산까지 되므로 제어 루프를 먼저 정량 검증한 뒤 검출기만 사람으로 갈아끼우면 된다(같은 bbox 인터페이스) — QR은 모션블러·압축에 약해 부적합, `--detector aruco`(apriltag_36h11)로 구현했다.
+
+
+## 2026-09-12
+
+- **Q. UI를 Qt로 다시 재구성해서 정석적인 UI 포맷을 한번 적용해볼까?**
+  → 지상관제(GCS) 툴의 정석 구성(상단 연결 툴바 · 중앙 영상 · 우측 비행 제어/튜닝 도크 · 하단 로그 도크 · 상태바, Fusion 다크 테마, 모드별 색 표시)으로 PySide6 버전 `person_follow_qt.py`를 만들었고 파이프라인·설정·인자·단축키는 tkinter 버전과 공유한다(합성 AprilTag 영상으로 FOLLOW/TRACKING까지 검증) — 단, miniforge에서는 Qt 6.11이 Windows 시스템 ICU를 쓰는데 conda의 `Library\bin\icuuc.dll`이 먼저 잡혀 QtCore 임포트가 깨지므로 System32 ICU를 선로딩하는 shim이 필요했다.
+
+## 2026-09-17
+
+- **Q. MTF-02P 하방센서(광류+ToF)를 달고 강화학습을 돌린다면 어떤 파라미터·차원이 필요한가?**
+  → 센서를 FC에 붙여 Betaflight가 고도/위치 홀드를 온보드로 처리하게 하면(PC로의 텔레메트리 하향링크가 없어 풀 RL은 관측 불가) RL은 시각 서보만 풀면 되어 관측 ~12차원(화면 오차 3 + 미분 3 + 유효 플래그 + 직전 행동 + 경과시간), 행동 2~3차원(트림 기준 오프셋 [-1,1])이면 충분하고, 성패는 차원보다 실측 지연(150~250ms) 주입과 도메인 랜덤화(질량·추력·배터리 새그·검출 드롭)에 달렸다 — 훈련장은 기존 Gazebo+Betaflight SITL 체인의 RC 주입 지점.
+
 ## 2026-10-11 (MTF-02P 하방 센서)
 
 - **Q. 커넥터 실크가 GVRT이고 선이 검정·빨강·노랑·초록 순이면 어떻게 연결하나?**
