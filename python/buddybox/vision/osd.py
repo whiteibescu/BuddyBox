@@ -351,10 +351,17 @@ class OsdReader:
         return self.book.grid
 
     def read(self, frame):
-        mask = text_mask(frame)
+        # 요소가 있는 행 띠만 이진화한다 (전체 프레임 대비 수 배 빠름)
+        H, W = frame.shape[:2]
+        g = self.grid.resolved(W, H)
+        rows = (self.rf.row, self.d2.row)
+        y0 = max(0, int(g.y0 + min(rows) * g.cell_h) - 4)
+        y1 = min(H, int(g.y0 + (max(rows) + 1) * g.cell_h) + 4)
+        mask = text_mask(frame[y0:y1])
+        band_grid = OsdGrid(g.cols, g.rows, g.x0, g.y0 - y0, g.cell_w, g.cell_h)
         r = OsdReading()
-        r.rf_text, r.rf_score = self.book.read(element_cells(mask, self.grid, self.rf))
-        r.d2_text, r.d2_score = self.book.read(element_cells(mask, self.grid, self.d2))
+        r.rf_text, r.rf_score = self.book.read(element_cells(mask, band_grid, self.rf))
+        r.d2_text, r.d2_score = self.book.read(element_cells(mask, band_grid, self.d2))
         try:
             r.alt_m = parse_rf(r.rf_text)
             d = parse_d2(r.d2_text)

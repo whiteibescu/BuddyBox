@@ -788,7 +788,10 @@ class MainWindow(QMainWindow):
         self.pipeline.start()
         self.set_mode(Mode.STANDBY)
         if sensor is not None:
-            self.info(f"MSP {verifier.description} — MTF-02P 센서 폴링 {self.args.sensor_hz:g} Hz")
+            if getattr(sensor, "glyphs_path", ""):
+                self.info(f"OSD 판독 센서: {Path(sensor.glyphs_path).name} — 매 세션 frames.jsonl 의 hold 에 거리·광류 기록")
+            else:
+                self.info(f"MSP {verifier.description} — MTF-02P 센서 폴링 {self.args.sensor_hz:g} Hz")
         free = self.pipeline.free_gb()
         if free is not None:
             self.info(f"세션 기록: {self.auto_session_box.currentText()} · 저장 폴더 여유 {free:.1f} GB")

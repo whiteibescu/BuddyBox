@@ -45,6 +45,19 @@ else:
     DEFAULT_REC_DIR = HERE.parent / "recordings"
     REPORT_TOOL = HERE.parent / "tools" / "session_report.py"
 
+OSD_GLYPH_NAMES = ("osd_glyphs.json", "osd_glyphs_walksnail_1080p.json")
+
+
+def find_osd_glyphs():
+    """앱 폴더(또는 소스 트리의 tools/)에서 OSD 글리프 파일을 찾는다. 벤치 학습본(osd_glyphs.json) 우선."""
+    dirs = [BASE] if FROZEN else [HERE, HERE.parent / "tools"]
+    for d in dirs:
+        for name in OSD_GLYPH_NAMES:
+            p = d / name
+            if p.exists():
+                return str(p)
+    return ""
+
 TRIM_TAB = [
     ("hover_throttle", "호버 스로틀", -1.0, 1.0, 0.005),
     ("max_throttle_delta", "스로틀 보정 폭", 0.0, 0.4, 0.01),
@@ -127,8 +140,9 @@ def parse_args():
     ap.add_argument("--msp", default="",
                     help="FC MSP 연결: COMx (USB 벤치, MTF-02P 센서 판독 + ARM 확인) / sitl / 비움=--port sitl이면 sitl")
     ap.add_argument("--sensor-hz", type=float, default=20.0, help="MSP 센서 폴링 주기 (Hz)")
-    ap.add_argument("--osd-glyphs", default="",
-                    help="OSD 판독 글리프 파일(osd_calibrate.py 결과). 지정하면 영상 OSD에서 센서 값을 읽는다 (비행 중 다운링크)")
+    ap.add_argument("--osd-glyphs", default="auto",
+                    help="OSD 판독 글리프 파일(osd_calibrate.py 결과) → 영상 OSD에서 센서 값을 읽어 매 세션에 기록. "
+                         "auto(기본)=앱 폴더의 osd_glyphs.json / osd_glyphs_walksnail_1080p.json 자동 사용, none=끔")
     ap.add_argument("--sitl-host", default=os.environ.get("BUDDYBOX_SITL_HOST", "127.0.0.1"))
     ap.add_argument("--config", default=str(DEFAULT_CONFIG))
     ap.add_argument("--rec-dir", default=str(DEFAULT_REC_DIR))
@@ -180,12 +194,24 @@ def make_arm_verifier(spec, sitl_host, msp_spec=""):
     return make_msp_client(spec, msp_spec, sitl_host)
 
 
-def make_sensor_poller(client, hz=20.0, osd_glyphs=""):
-    """센서 소스: --osd-glyphs 가 있으면 영상 OSD 판독, 아니면 MSP 클라이언트(있을 때) 폴러."""
-    if osd_glyphs:
+def resolve_osd_glyphs(spec):
+    spec = (spec or "").strip()
+    if spec.lower() in ("", "none", "off"):
+        return ""
+    if spec.lower() == "auto":
+        return find_osd_glyphs()
+    return spec
+
+
+def make_sensor_poller(client, hz=20.0, osd_glyphs="auto"):
+    """센서 소스: OSD 글리프 파일이 있으면 영상 OSD 판독(MSP 보다 우선), 아니면 MSP 클라이언트(있을 때) 폴러."""
+    path = resolve_osd_glyphs(osd_glyphs)
+    if path:
         from buddybox.follow.sensors import OsdSensorSource
         from buddybox.vision.osd import GlyphBook, OsdReader
-        return OsdSensorSource(OsdReader(GlyphBook.load(osd_glyphs)))
+        src = OsdSensorSource(OsdReader(GlyphBook.load(path)))
+        src.glyphs_path = path
+        return src
     if client is None:
         return None
     return SensorPoller(client, hz=hz)
@@ -546,7 +572,10 @@ class App:
         self.pipeline.start()
         self.set_mode(Mode.STANDBY)
         if sensor is not None:
-            self.info(f"MSP {verifier.description} — MTF-02P 센서 폴링 {self.args.sensor_hz:g} Hz")
+            if getattr(sensor, "glyphs_path", ""):
+                self.info(f"OSD 판독 센서: {Path(sensor.glyphs_path).name} — 매 세션 frames.jsonl 의 hold 에 거리·광류 기록")
+            else:
+                self.info(f"MSP {verifier.description} — MTF-02P 센서 폴링 {self.args.sensor_hz:g} Hz")
         free = self.pipeline.free_gb()
         if free is not None:
             self.info(f"세션 기록: {self.auto_session_var.get()} · 저장 폴더 여유 {free:.1f} GB")

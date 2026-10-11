@@ -123,6 +123,24 @@ def summarize(session):
     trims = [f.get("trim", 0.0) for f in frames]
     offsets = [f.get("trim_offset", 0.0) for f in frames]
     descends = [f.get("descend", 0.0) for f in frames]
+    holds = [f.get("hold") or {} for f in frames]
+    sensor_frames = [h for h in holds if h.get("sensor")]
+    sensor_ok = [h for h in sensor_frames if h.get("sensor_ok")]
+    alts = [h["alt_m"] for h in sensor_ok if h.get("alt_m") is not None]
+    vxs = [h.get("vx", 0.0) for h in sensor_ok]
+    vys = [h.get("vy", 0.0) for h in sensor_ok]
+    sensor = None
+    if sensor_frames:
+        sensor = {
+            "frames": len(sensor_frames), "ok": len(sensor_ok),
+            "ok_pct": round(100.0 * len(sensor_ok) / max(1, len(sensor_frames)), 1),
+            "alt_min": round(min(alts), 2) if alts else None, "alt_max": round(max(alts), 2) if alts else None,
+            "alt_mean": round(_mean(alts), 2) if alts else None,
+            "vx_abs_max": round(max(abs(v) for v in vxs), 2) if vxs else None,
+            "vy_abs_max": round(max(abs(v) for v in vys), 2) if vys else None,
+            "alt_hold_steps": sum(1 for h in holds if h.get("alt_hold")),
+            "pos_hold_steps": sum(1 for h in holds if h.get("pos_hold")),
+        }
     persons = [len(f.get("persons") or []) for f in frames if f.get("new")]
     infer = [f["infer_ms"] for f in frames if f.get("infer_ms")]
     fps = [f["fps"] for f in frames if f.get("fps")]
@@ -161,11 +179,14 @@ def summarize(session):
                  "offset_end": round(offsets[-1], 3), "offset_min": round(min(offsets), 3),
                  "offset_max": round(max(offsets), 3)},
         "descend_max": round(max(descends), 3),
+        "sensor": sensor,
         "config": {k: cfg.get(k) for k in ("hover_throttle", "throttle_mode", "altitude_reference", "target_y",
                                            "target_height", "throttle_kp", "throttle_ki", "throttle_kd",
                                            "lateral_kp", "lateral_kd", "pitch_kp", "pitch_kd",
                                            "max_throttle_delta", "trim_learning", "trim_learn_rate",
-                                           "lost_descend_rate", "altitude_assist", "distance_hold")},
+                                           "lost_descend_rate", "altitude_assist", "distance_hold",
+                                           "alt_hold", "alt_target_m", "alt_kp", "alt_ki", "alt_kd",
+                                           "pos_hold", "pos_kp", "pos_kv", "flow_invert_x", "flow_invert_y")},
         "events": [e for e in session["events"] if e.get("kind") != "config"],
         "segments": [s for s in segments(frames) if s["end"] - s["start"] >= 0.2 or s["steps"] >= 3],
     }
@@ -203,6 +224,13 @@ def render_markdown(s):
     lines += ["", "## 호버 트림", "",
               f"- trim 시작 {s['trim']['start']:+.3f} → 끝 {s['trim']['end']:+.3f} (학습 오프셋 끝 {s['trim']['offset_end']:+.3f}, 범위 {s['trim']['offset_min']:+.3f}~{s['trim']['offset_max']:+.3f})",
               f"- LOST 하강 최대 {s['descend_max']:.3f}", ""]
+    sen = s.get("sensor")
+    if sen:
+        lines += ["## 하방 센서 (MTF-02P)", "",
+                  f"- 샘플 {sen['frames']} 스텝, 유효 {sen['ok']} ({sen['ok_pct']}%)",
+                  f"- 거리 min / 평균 / max: {sen['alt_min']} / {sen['alt_mean']} / {sen['alt_max']} m",
+                  f"- 광류 속도 |vx| 최대 {sen['vx_abs_max']} m/s, |vy| 최대 {sen['vy_abs_max']} m/s",
+                  f"- 고도 홀드 {sen['alt_hold_steps']} 스텝, 위치 홀드 {sen['pos_hold_steps']} 스텝", ""]
     lines += ["## 설정 (주요)", "", "```json", json.dumps(s["config"], indent=2, ensure_ascii=False), "```", ""]
     lines += ["## 상태 타임라인", "", "| 시작(s) | 끝(s) | 상태 | 스텝 |", "|---|---|---|---|"]
     for seg in s["segments"]:
@@ -350,8 +378,12 @@ def plot(session, out_path):
     yaw = [f["safe"]["yaw"] if f.get("safe") else None for f in frames]
     pitch = [f["safe"]["pitch"] if f.get("safe") else None for f in frames]
     motion = [f.get("motion", 0.0) if f.get("new") else None for f in frames]
-    fig, axes = plt.subplots(4, 1, figsize=(12, 11), sharex=True,
-                             gridspec_kw={"height_ratios": [3, 2, 2, 1]})
+    holds = [f.get("hold") or {} for f in frames]
+    has_sensor = any(h.get("sensor") for h in holds)
+    n_axes = 5 if has_sensor else 4
+    ratios = [3, 2, 2, 1] + ([2] if has_sensor else [])
+    fig, axes = plt.subplots(n_axes, 1, figsize=(12, 11 + (2.5 if has_sensor else 0)), sharex=True,
+                             gridspec_kw={"height_ratios": ratios})
     colors = {"TRACKING": "#c8f7c5", "LOST": "#fff3b0", "NO TARGET": "#ffd8a8", "NO VIDEO": "#ffb3b3",
               "HOVER": "#cfe8ff", "STANDBY": "#e0e0e0"}
     for seg in segments(frames):
@@ -373,8 +405,24 @@ def plot(session, out_path):
     axes[3].plot(t, motion, label="motion", color="tab:purple")
     axes[3].axhline(MOTION_THRESHOLD, color="tab:purple", ls=":", lw=0.8)
     axes[3].set_ylabel("motion")
-    axes[3].set_xlabel("t (s)")
     axes[3].legend(loc="upper right", fontsize=8)
+    if has_sensor:
+        alt = [h.get("alt_m") if h.get("sensor_ok") else None for h in holds]
+        tgt = [h.get("alt_target_m") if h.get("alt_hold") else None for h in holds]
+        vx = [h.get("vx") if h.get("sensor_ok") else None for h in holds]
+        vy = [h.get("vy") if h.get("sensor_ok") else None for h in holds]
+        ax = axes[4]
+        ax.plot(t, alt, label="alt (rangefinder, m)", color="tab:green")
+        ax.plot(t, tgt, label="alt target", color="tab:green", ls="--")
+        ax.set_ylabel("alt (m)")
+        ax2 = ax.twinx()
+        ax2.plot(t, vx, label="vx (flow, m/s)", color="tab:cyan", lw=0.8)
+        ax2.plot(t, vy, label="vy (flow, m/s)", color="tab:pink", lw=0.8)
+        ax2.set_ylabel("v (m/s)")
+        h1, l1 = ax.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax.legend(h1 + h2, l1 + l2, loc="upper right", fontsize=8)
+    axes[-1].set_xlabel("t (s)")
     for e in session["events"]:
         if e.get("kind") in ("mode", "panic", "trim_adopt", "trim_reset", "arm", "disarm", "arm_result"):
             for ax in axes:
@@ -393,7 +441,8 @@ def export_csv(session, out_path):
             "arm", "n_persons", "track_cx", "track_cy", "track_w", "track_h", "track_conf", "track_age", "track_lost",
             "err_x", "err_y", "err_size", "raw_x", "raw_y", "raw_size",
             "raw_roll", "raw_pitch", "raw_yaw", "raw_throttle", "roll", "pitch", "yaw", "throttle",
-            "trim", "trim_offset", "descend", "ch1", "ch2", "ch3", "ch4", "ch5"]
+            "trim", "trim_offset", "descend", "ch1", "ch2", "ch3", "ch4", "ch5",
+            "sensor_ok", "alt_m", "alt_target_m", "vx", "vy", "alt_hold", "pos_hold", "descend_m"]
     with open(out_path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(cols)
@@ -402,6 +451,7 @@ def export_csv(session, out_path):
             err = f.get("err") or {}
             raw = f.get("raw") or {}
             safe = f.get("safe") or {}
+            hold = f.get("hold") or {}
             us = f.get("us") or [None] * 5
             w.writerow([f.get("t"), f.get("seq"), f.get("det_seq"), f.get("new"), f.get("rec_frame"), f.get("mode"),
                         f.get("status"), f.get("fps"), f.get("infer_ms"), f.get("video_ok"), f.get("motion"),
@@ -411,13 +461,56 @@ def export_csv(session, out_path):
                         raw.get("roll"), raw.get("pitch"), raw.get("yaw"), raw.get("throttle"),
                         safe.get("roll"), safe.get("pitch"), safe.get("yaw"), safe.get("throttle"),
                         f.get("trim"), f.get("trim_offset"), f.get("descend"),
-                        us[0], us[1], us[2], us[3], us[4] if len(us) > 4 else None])
+                        us[0], us[1], us[2], us[3], us[4] if len(us) > 4 else None,
+                        hold.get("sensor_ok"), hold.get("alt_m"), hold.get("alt_target_m"), hold.get("vx"),
+                        hold.get("vy"), hold.get("alt_hold"), hold.get("pos_hold"), f.get("descend_m")])
     return out_path
 
 
 def latest_session(root):
     sessions = sorted(Path(root).glob("session_*"))
     return sessions[-1] if sessions else None
+
+
+def backfill_osd(session, glyphs_path):
+    """센서 소스 없이 녹화된 세션: raw.mp4 의 OSD 글자를 읽어 각 스텝의 hold 를 채운다 (rec_frame 으로 매핑)."""
+    import cv2
+
+    from buddybox.vision.osd import GlyphBook, OsdReader
+
+    video = Path(session["dir"]) / "raw.mp4"
+    if not video.exists():
+        return 0, 0
+    reader = OsdReader(GlyphBook.load(glyphs_path))
+    cap = cv2.VideoCapture(str(video))
+    per_frame = {}
+    idx = 0
+    n_ok = 0
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        r = reader.read(frame)
+        if r.ok:
+            alt = r.alt_m
+            fx, fy = r.debug[6] * 0.001, r.debug[7] * 0.001
+            per_frame[idx] = {"sensor": True, "sensor_ok": alt is not None, "alt_m": alt,
+                              "vx": round(fx * alt, 4) if alt is not None else 0.0,
+                              "vy": round(fy * alt, 4) if alt is not None else 0.0,
+                              "flow_x": fx, "flow_y": fy, "alt_hold": False, "pos_hold": False, "osd": True}
+            n_ok += 1
+        else:
+            per_frame[idx] = {"sensor": True, "sensor_ok": False, "alt_m": None, "vx": 0.0, "vy": 0.0,
+                              "alt_hold": False, "pos_hold": False, "osd": True, "error": r.error}
+        idx += 1
+    cap.release()
+    for f in session["frames"]:
+        if (f.get("hold") or {}).get("sensor"):
+            continue
+        h = per_frame.get(f.get("rec_frame"))
+        if h is not None:
+            f["hold"] = h
+    return n_ok, idx
 
 
 def main():
@@ -433,6 +526,8 @@ def main():
     ap.add_argument("--out", default=None, help="출력 폴더 (기본: 세션 폴더)")
     ap.add_argument("--motion-threshold", type=float, default=MOTION_THRESHOLD,
                     help="움직임 구간 판정 임계값 (VRX 실측: 정지 0.0003, 비행 ~0.02)")
+    ap.add_argument("--osd-glyphs", default=None,
+                    help="OSD 글리프 JSON — 세션에 센서 기록이 없으면 raw.mp4 의 OSD 를 읽어 거리·광류를 채운다")
     args = ap.parse_args()
     MOTION_THRESHOLD = args.motion_threshold
 
@@ -443,6 +538,9 @@ def main():
     session = load_session(session_dir)
     out_dir = Path(args.out) if args.out else session_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+    if args.osd_glyphs:
+        n_ok, n_vid = backfill_osd(session, args.osd_glyphs)
+        print(f"OSD 백필: 영상 {n_vid} 프레임 판독, 유효 {n_ok}")
 
     summary = summarize(session)
     md = render_markdown(summary)
