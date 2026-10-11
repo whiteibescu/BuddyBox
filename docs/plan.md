@@ -64,9 +64,12 @@ PC → Pro Micro → TX15 Max(트레이너) → ELRS → Betaflight 관제 체�
 - [x] serialpassthrough + MicoAssistant로 센서 데이터 확인, 출력 프로토콜 MicoLink → **MSP**
 - [x] 2025.12.5에서 MT 드라이버 미포함으로 인식 실패 원인 규명 → **Betaflight 2026.6.2** 재플래싱
 - [x] UART2 = MSP, `feature RANGEFINDER/OPTICALFLOW`, `MTF02P`/`MT` 설정 → Sonar·Debug 그래프 수신 확인
-- [ ] 기체 하단 장착 (마운트 + 랜딩기어), 플로우 방향 보정 (`opticalflow_rotation`/`flip_x`)
-- [ ] PC 판독 코드: `MSP_SONAR_ALTITUDE`(58) + `MSP_DEBUG`(254) — USB 벤치부터
-- [ ] 비행 중 다운링크 경로 결정 (ELRS 텔레메트리 + MSP 요청 → TX15 USB 후보)
+- [ ] 기체 하단 장착 (마운트 + 랜딩기어), 플로우 방향 보정 (`opticalflow_rotation`/`flip_x`) — `tools/mtf02p_monitor.py --check`
+- [x] PC 판독 코드: `MspSerial`(USB) + `SensorPoller` — `MSP_SONAR_ALTITUDE`(58) + `MSP_DEBUG`(254), 벤치 모니터
+- [x] 센서 홀드 제어: `HoverHold` — 레인지파인더 고도 PID(`alt_hold`) + 광류 위치 유지(`pos_hold`), HOVER/LOST/FOLLOW 통합, 무효 시 개루프 복귀
+- [ ] 벤치 검증 (프롭 제거, `--msp COMx`): 거리값·플로우 부호 → `flow_invert_x/y` 확정, 고도 PID 부호 확인
+- [ ] SITL: 가상 레인지파인더/플로우 샘플 주입으로 홀드 루프 검증
+- [ ] 비행 중 다운링크 경로 결정 (ELRS 텔레메트리 + MSP 요청 → TX15 USB 후보) — 없으면 센서 홀드는 USB 벤치/테더 전용
 - 상세: [mtf02p-sensor.md](mtf02p-sensor.md)
 
 ## Phase 7 — SITL/Gazebo 시뮬레이션 (sim-to-real) 🔄 진행 중

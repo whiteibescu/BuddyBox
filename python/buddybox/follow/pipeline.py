@@ -78,11 +78,13 @@ def motion_score(frame, prev_small):
 class FollowPipeline:
     def __init__(self, source, detector, backend, cfg, conf=0.5, every=2, loop_hz=30.0,
                  rec_dir="recordings", label="person", auto_session="always", annotated_video=False,
-                 session_max_s=300.0, min_free_gb=1.0, arm_verifier=None, arm_channel=AUX1):
+                 session_max_s=300.0, min_free_gb=1.0, arm_verifier=None, arm_channel=AUX1,
+                 sensor=None):
         self.source = source
         self.detector = detector
         self.backend = backend
         self.cfg = cfg
+        self.sensor = sensor  # SensorPoller (MTF-02P) 또는 None
         self.loop_hz = loop_hz
         self.rec_dir = Path(rec_dir)
         self.auto_session = auto_session if auto_session in AUTO_SESSION_MODES else "off"
@@ -198,6 +200,13 @@ class FollowPipeline:
         self.cfg.hover_throttle = max(-1.0, min(1.0, float(value)))
         self.apply_config(self.cfg)
 
+    def set_alt_target(self, value_m):
+        self.cfg.alt_target_m = max(self.cfg.alt_min_m, min(self.cfg.alt_max_m, float(value_m)))
+        self.apply_config(self.cfg)
+
+    def sensor_sample(self):
+        return self.sensor.latest() if self.sensor is not None else None
+
     @property
     def arm_state(self):
         return self.arming.snapshot()
@@ -241,12 +250,16 @@ class FollowPipeline:
             return
         self._running = True
         self.worker.start()
+        if self.sensor is not None:
+            self.sensor.start()
         self._thread = Thread(target=self._loop, daemon=True)
         self._thread.start()
 
     def stop(self):
         self._running = False
         self.worker.stop()
+        if self.sensor is not None:
+            self.sensor.stop()
         if self._thread is not None:
             self._thread.join(timeout=3.0)
         self.stop_session()
@@ -403,10 +416,13 @@ class FollowPipeline:
                 tick = now
 
             video_ok = last_frame_t is not None and (now - last_frame_t) <= self.cfg.video_timeout_s
+            sample = self.sensor.latest() if self.sensor is not None else None
             with self._lock:
-                raw, status = self.supervisor.step(track, video_ok, now)
+                raw, status = self.supervisor.step(track, video_ok, now, sample)
                 safe = self.limiter.apply(raw, now)
                 mode = self.supervisor.mode
+                hold = self.controller.hold.snapshot(sample, now)
+                descend_m = self.supervisor.descend_m
             self.backend.set_sticks(**safe)
             us = self.backend.get_channels_us()
 
@@ -435,6 +451,8 @@ class FollowPipeline:
                 "trim": self.controller.effective_trim,
                 "trim_offset": self.controller.trim_offset,
                 "descend": self.supervisor.descend,
+                "descend_m": descend_m,
+                "hold": hold,
             }
 
             annotated = None

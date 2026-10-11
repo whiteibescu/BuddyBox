@@ -179,3 +179,6 @@
 - **Q. 비행 중 센서 값을 PC로 받으려면? (Walksnail 사용 시)**
   → Walksnail 링크는 OSD 표시용이라 부적합하고, ELRS 텔레메트리로 MSP 요청·응답을 TX15 USB를 거쳐 받는 경로가 현실적이다.
 
+- **Q. MTF-02P를 달았으니 그 값으로 호버링하는 기능을 추가해야 하는 게 아닐까?**
+  → 맞다 — `MspSerial`(FC USB)로 `MSP_SONAR_ALTITUDE`·`MSP_DEBUG`를 20 Hz 폴링하는 `SensorPoller`와, 레인지파인더 고도 PID(`alt_hold`) + 광류 속도·드리프트로 roll/pitch를 잡는 위치 유지(`pos_hold`)를 묶은 `HoverHold`를 만들어 HOVER/LOST/FOLLOW에 통합했고(LOST 하강은 목표 고도를 m 단위로 낮춤, 센서 무효 시 기존 개루프 복귀), 단 PC↔FC 다운링크가 아직 USB뿐이어서 당장은 프롭 제거 벤치·테더 검증까지만 가능하다(`--msp COMx`, `tools/mtf02p_monitor.py --check`).
+

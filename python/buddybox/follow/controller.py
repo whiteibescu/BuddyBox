@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..safety import StickCommand
+from .hover import HoverHold
 from .pid import PID
 
 
@@ -48,6 +49,25 @@ class FollowConfig:
     max_throttle_rate_per_s: float = 0.6
     lost_after_s: float = 0.6
     video_timeout_s: float = 1.0
+    # --- 하방 센서(MTF-02P) 홀드: 레인지파인더 고도 / 옵티컬 플로우 위치 ---
+    alt_hold: bool = False
+    alt_target_m: float = 0.8
+    alt_kp: float = 0.30
+    alt_ki: float = 0.05
+    alt_kd: float = 0.15
+    alt_d_filter: float = 0.3
+    alt_min_m: float = 0.10
+    alt_max_m: float = 3.5
+    alt_land_m: float = 0.15
+    lost_descend_m_s: float = 0.10
+    pos_hold: bool = False
+    pos_kp: float = 0.15
+    pos_kv: float = 0.25
+    pos_max_drift_m: float = 1.0
+    max_pos_tilt: float = 0.20
+    flow_invert_x: bool = False
+    flow_invert_y: bool = False
+    sensor_timeout_s: float = 0.4
     extra: dict = field(default_factory=dict)
 
     @classmethod
@@ -126,11 +146,14 @@ class FollowController:
         self.trim_offset = 0.0
         self._last_t = None
         self.last_error = FollowError()
+        self.hold = HoverHold(self.cfg)
+        self.sample = None
         self.apply_config(self.cfg)
         self.last_command = self.hover()
 
     def apply_config(self, cfg):
         self.cfg = cfg
+        self.hold.apply_config(cfg)
         self.lateral.kp, self.lateral.ki, self.lateral.kd = cfg.lateral_kp, cfg.lateral_ki, cfg.lateral_kd
         self.lateral.out_limit = self.lateral.i_limit = cfg.max_lateral
         self.pitch.kp, self.pitch.ki, self.pitch.kd = cfg.pitch_kp, cfg.pitch_ki, cfg.pitch_kd
@@ -143,8 +166,28 @@ class FollowController:
         self.lateral.reset()
         self.pitch.reset()
         self.throttle.reset()
+        self.hold.reset()
         self._last_t = None
         self.last_error = FollowError()
+
+    def set_sensor(self, sample, now=None):
+        """최신 하방 센서 샘플(RangeFlowSample 또는 None)을 등록한다."""
+        self.sample = sample
+
+    @property
+    def sensor_hold_active(self):
+        return self.hold.alt_active
+
+    def _tick(self, now):
+        dt = 0.0 if self._last_t is None else max(0.0, now - self._last_t)
+        self._last_t = now
+        return dt
+
+    def _learn_trim(self, delta, dt):
+        cfg = self.cfg
+        if cfg.trim_learning and not cfg.offset_mode and dt > 0.0:
+            self.trim_offset = _clip(self.trim_offset + delta * cfg.trim_learn_rate * dt,
+                                     -cfg.trim_learn_down, cfg.trim_learn_up)
 
     def reset_trim(self):
         self.trim_offset = 0.0
@@ -163,8 +206,25 @@ class FollowController:
     def effective_trim(self):
         return _clip(self.base_throttle + self.trim_offset, -1.0, 1.0)
 
-    def hover(self):
-        return StickCommand(roll=0.0, pitch=0.0, yaw=0.0, throttle=self.effective_trim)
+    def hover(self, now=None, target_alt_m=None):
+        """호버 명령. now가 주어지고 센서 홀드가 가능하면 고도/위치를 닫힌 루프로 유지한다.
+
+        센서가 없거나 무효면 기존처럼 트림 스로틀 개루프를 돌려준다.
+        """
+        cmd = StickCommand(roll=0.0, pitch=0.0, yaw=0.0, throttle=self.effective_trim)
+        if now is None:
+            return cmd
+        dt = self._tick(now)
+        target = self.cfg.alt_target_m if target_alt_m is None else target_alt_m
+        delta = self.hold.altitude(self.sample, now, target)
+        if delta is not None:
+            self._learn_trim(delta, dt)
+            cmd.throttle = _clip(self.effective_trim + delta, -1.0, 1.0)
+        pos = self.hold.position(self.sample, now)
+        if pos is not None:
+            cmd.roll, cmd.pitch = pos
+        self.last_command = cmd
+        return cmd
 
     def standby(self):
         return StickCommand(roll=0.0, pitch=0.0, yaw=0.0, throttle=0.0 if self.cfg.offset_mode else -1.0)
@@ -188,8 +248,7 @@ class FollowController:
         cfg = self.cfg
         err = self.errors(track)
         self.last_error = err
-        dt = 0.0 if self._last_t is None else max(0.0, now - self._last_t)
-        self._last_t = now
+        dt = self._tick(now)
 
         lateral = self.lateral.update(err.x, now)
         if cfg.invert_lateral:
@@ -203,18 +262,31 @@ class FollowController:
         else:
             self.pitch.reset()
 
+        # 고도: 레인지파인더 홀드가 가능하면 영상 기반 보조 대신 센서를 쓴다
         delta = 0.0
-        if cfg.altitude_assist:
+        sensor_delta = self.hold.altitude(self.sample, now, cfg.alt_target_m)
+        if sensor_delta is not None:
+            self.throttle.reset()
+            delta = sensor_delta
+            self._learn_trim(delta, dt)
+        elif cfg.altitude_assist:
             delta = self.throttle.update(err.y, now)
             if cfg.invert_throttle:
                 delta = -delta
-            if cfg.trim_learning and not cfg.offset_mode and dt > 0.0:
-                self.trim_offset = _clip(self.trim_offset + delta * cfg.trim_learn_rate * dt,
-                                         -cfg.trim_learn_down, cfg.trim_learn_up)
+            self._learn_trim(delta, dt)
         else:
             self.throttle.reset()
 
         roll, yaw = (lateral, 0.0) if cfg.lateral_axis == "roll" else (0.0, lateral)
+
+        # 위치: 영상이 쓰지 않는 축만 플로우로 잡는다 (yaw 추적 중이면 roll, 거리 유지 꺼져 있으면 pitch)
+        axes = tuple(a for a, free in (("roll", cfg.lateral_axis != "roll"),
+                                       ("pitch", not cfg.distance_hold)) if free)
+        pos = self.hold.position(self.sample if axes else None, now, axes)
+        if pos is not None:
+            roll += pos[0]
+            pitch += pos[1]
+
         cmd = StickCommand(
             roll=_clip(roll, -cfg.max_lateral, cfg.max_lateral),
             pitch=_clip(pitch, -cfg.max_pitch, cfg.max_pitch),

@@ -19,7 +19,8 @@ from buddybox.follow.controller import FollowConfig
 from buddybox.follow.overlay import draw_overlay
 from buddybox.follow.pipeline import AUTO_SESSION_MODES, FollowPipeline
 from buddybox.follow.state import Mode
-from buddybox.msp import SITL_MSP_PORT, MspClient
+from buddybox.follow.sensors import SensorPoller
+from buddybox.msp import SITL_MSP_PORT, open_msp
 from buddybox.sitl import BuddyBoxSitl
 from buddybox.vision.capture import (
     PRESETS,
@@ -53,6 +54,9 @@ TRIM_TAB = [
     ("lost_descend_after_s", "LOST 하강 대기(s)", 0.0, 10.0, 0.5),
     ("lost_descend_rate", "LOST 하강 속도", 0.0, 0.1, 0.005),
     ("max_throttle_rate_per_s", "스로틀 슬루(/s)", 0.1, 3.0, 0.05),
+    ("alt_target_m", "목표 고도 (m)", 0.1, 3.0, 0.05),
+    ("lost_descend_m_s", "LOST 하강 (m/s)", 0.0, 0.5, 0.01),
+    ("max_pos_tilt", "위치유지 최대 기울기", 0.05, 0.5, 0.01),
 ]
 
 PID_TAB = [
@@ -71,6 +75,11 @@ PID_TAB = [
     ("max_lateral", "좌우 최대", 0.05, 0.6, 0.01),
     ("max_pitch", "피치 최대", 0.05, 0.6, 0.01),
     ("lost_after_s", "LOST 판정(s)", 0.1, 3.0, 0.1),
+    ("alt_kp", "센서고도 Kp", 0.0, 1.0, 0.01),
+    ("alt_ki", "센서고도 Ki", 0.0, 0.5, 0.005),
+    ("alt_kd", "센서고도 Kd", 0.0, 0.5, 0.005),
+    ("pos_kp", "위치 Kp (/m)", 0.0, 1.0, 0.01),
+    ("pos_kv", "위치 Kv (/m/s)", 0.0, 1.0, 0.01),
 ]
 
 TOGGLES = [
@@ -80,6 +89,10 @@ TOGGLES = [
     ("invert_lateral", "좌우 반전"),
     ("invert_pitch", "피치 반전"),
     ("invert_throttle", "스로틀 반전"),
+    ("alt_hold", "센서 고도 유지 (MTF-02P)"),
+    ("pos_hold", "센서 위치 유지 (광류)"),
+    ("flow_invert_x", "광류 X 반전"),
+    ("flow_invert_y", "광류 Y 반전"),
 ]
 
 COMBOS = [
@@ -111,6 +124,9 @@ def parse_args():
     ap.add_argument("--every", type=int, default=2, help="N 프레임마다 추론")
     ap.add_argument("--port", default="sim", help="sim / auto / COMx / sitl")
     ap.add_argument("--arm-channel", type=int, default=5, help="ARM 채널 (CH, 1~8, 기본 5=AUX1)")
+    ap.add_argument("--msp", default="",
+                    help="FC MSP 연결: COMx (USB 벤치, MTF-02P 센서 판독 + ARM 확인) / sitl / 비움=--port sitl이면 sitl")
+    ap.add_argument("--sensor-hz", type=float, default=20.0, help="MSP 센서 폴링 주기 (Hz)")
     ap.add_argument("--sitl-host", default=os.environ.get("BUDDYBOX_SITL_HOST", "127.0.0.1"))
     ap.add_argument("--config", default=str(DEFAULT_CONFIG))
     ap.add_argument("--rec-dir", default=str(DEFAULT_REC_DIR))
@@ -150,10 +166,23 @@ def make_backend(spec, sitl_host):
     return BuddyBox(spec)
 
 
-def make_arm_verifier(spec, sitl_host):
-    if (spec or "").strip().lower() == "sitl":
-        return MspClient(host=sitl_host, port=SITL_MSP_PORT)
-    return None
+def make_msp_client(port_spec, msp_spec, sitl_host):
+    """--msp 가 있으면 그것(COMx/sitl), 없으면 --port sitl 일 때만 SITL MSP. 아니면 None."""
+    spec = (msp_spec or "").strip()
+    if not spec and (port_spec or "").strip().lower() == "sitl":
+        spec = "sitl"
+    return open_msp(spec, host=sitl_host, port=SITL_MSP_PORT)
+
+
+def make_arm_verifier(spec, sitl_host, msp_spec=""):
+    return make_msp_client(spec, msp_spec, sitl_host)
+
+
+def make_sensor_poller(client, hz=20.0):
+    """MSP 클라이언트가 있으면 MTF-02P 폴러를 만든다 (ARM 확인용 클라이언트와 공유)."""
+    if client is None:
+        return None
+    return SensorPoller(client, hz=hz)
 
 
 def serial_ports():
@@ -497,7 +526,8 @@ class App:
         if self.source is None or self.backend is None or self.pipeline is not None:
             return
         self._ensure_detector()
-        verifier = make_arm_verifier(self.port_var.get(), self.args.sitl_host)
+        verifier = make_arm_verifier(self.port_var.get(), self.args.sitl_host, self.args.msp)
+        sensor = make_sensor_poller(verifier, hz=self.args.sensor_hz)
         self.pipeline = FollowPipeline(self.source, self.detector, self.backend, self.cfg,
                                        conf=self.args.conf, every=self.args.every,
                                        label="marker" if self.args.detector == "aruco" else "person",
@@ -505,9 +535,12 @@ class App:
                                        auto_session=self.auto_session_mode(),
                                        annotated_video=self.args.annotated_video,
                                        session_max_s=max(30.0, self.args.session_split_min * 60.0),
-                                       arm_verifier=verifier, arm_channel=self.arm_ch_var.get() - 1)
+                                       arm_verifier=verifier, arm_channel=self.arm_ch_var.get() - 1,
+                                       sensor=sensor)
         self.pipeline.start()
         self.set_mode(Mode.STANDBY)
+        if sensor is not None:
+            self.info(f"MSP {verifier.description} — MTF-02P 센서 폴링 {self.args.sensor_hz:g} Hz")
         free = self.pipeline.free_gb()
         if free is not None:
             self.info(f"세션 기록: {self.auto_session_var.get()} · 저장 폴더 여유 {free:.1f} GB")
@@ -796,6 +829,19 @@ class App:
             if tele.get("descend"):
                 line += f"  descend -{tele['descend']:.3f}"
             line += f"  motion {tele.get('motion', 0.0):.3f}"
+            hold = tele.get("hold") or {}
+            if hold.get("sensor"):
+                alt = hold.get("alt_m")
+                line += "\nalt " + (f"{alt:.2f} m" if alt is not None else "---")
+                if hold.get("alt_hold"):
+                    line += f" → {hold.get('alt_target_m', 0.0):.2f} m HOLD"
+                    if tele.get("descend_m"):
+                        line += f" (↓{tele['descend_m']:.2f})"
+                elif not hold.get("sensor_ok"):
+                    line += " (센서 무효/지연)"
+                line += f"  v {hold.get('vx', 0.0):+.2f}/{hold.get('vy', 0.0):+.2f} m/s"
+                if hold.get("pos_hold"):
+                    line += " POS"
             if tele.get("rec"):
                 line += "\n● " + tele["rec"]
             self.trim_var.set(line)

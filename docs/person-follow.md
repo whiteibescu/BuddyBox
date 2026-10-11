@@ -202,6 +202,48 @@ EdgeTX SYS→Trainer 에서 **Thr 채널만 `+=`(Add) 30~50%** 로 두고 (Ail/E
 FC 에 기압계(baro)가 있으면 Betaflight 2025.12 이상에서 `ALT_HOLD` 모드를 AUX 스위치에 걸어 펌웨어가 고도를 잡게 할 수
 있다 (PC 스로틀은 중립 부근이면 유지). 1S AIO 보드는 대부분 baro 가 없으므로 Meteor75 Pro 2 의 FC 사양을 먼저 확인할 것.
 
+## 하방 센서 홀드 (MTF-02P)
+
+위 개루프 한계의 정식 해법. FC 에 붙인 MTF-02P 의 **레인지파인더 거리**와 **옵티컬 플로우**를 MSP 로 받아
+PC 가 고도·위치를 닫힌 루프로 잡는다 (센서 배선·설정은 [mtf02p-sensor.md](mtf02p-sensor.md)).
+
+```
+FC ──MSP(USB)──▶ SensorPoller(20 Hz) ──RangeFlowSample──▶ HoverHold ──Δthrottle / roll / pitch──▶ 스틱
+                  alt_m, flow_x/y(rad/s), vx/vy = flow × alt (m/s)
+```
+
+```powershell
+python person_follow.py --port COM5 --msp COM7      # Pro Micro + FC USB. --msp 생략 시 --port sitl 이면 SITL MSP
+python ..\tools\mtf02p_monitor.py COM7 --check      # 값만 보기 + 장착 방향 확인
+```
+
+| 설정 | 기본 | 뜻 |
+|---|---|---|
+| `alt_hold` | off | 레인지파인더 고도 유지. `alt_target_m`(0.8) 목표, `alt_kp/ki/kd`(0.30/0.05/0.15, m → 스로틀), 보정 폭은 `max_throttle_delta` 공유 |
+| `alt_min_m` / `alt_max_m` | 0.10 / 3.5 | 이 범위 밖(또는 음수=실패) 이면 샘플 무효 |
+| `pos_hold` | off | 광류 위치 유지. roll/pitch = −(`pos_kv`·속도 + `pos_kp`·드리프트적분), 한계 `max_pos_tilt`(0.20) |
+| `flow_invert_x` / `flow_invert_y` | off | 센서 부호 보정 (+X = 오른쪽, +Y = 앞 이 되도록). 모니터 `--check` 로 확정 |
+| `sensor_timeout_s` | 0.4 | 이보다 오래된 샘플은 무효 |
+| `lost_descend_m_s` / `alt_land_m` | 0.10 / 0.15 | LOST 하강: 목표 고도를 초당 이만큼 낮춰 착지 고도까지 |
+
+동작 규칙:
+
+- **HOVER**: `alt_hold` 면 스로틀 = 트림 + 고도 PID Δ, `pos_hold` 면 roll/pitch 로 제자리 유지. 트림 학습은 센서 Δ 로도 동작한다.
+- **FOLLOW (TRACKING)**: 고도는 센서가 있으면 영상 `고도 보조` 대신 센서를 쓴다. 위치 유지는 영상이 쓰지 않는 축만 —
+  좌우가 yaw 면 roll 을, `거리 유지` 가 꺼져 있으면 pitch 를 잡는다.
+- **LOST / NO TARGET / NO VIDEO**: 센서 홀드가 살아 있으면 `lost_descend_after_s` 뒤 **목표 고도를 m 단위로** 낮추고
+  (`descend_m`), 아니면 기존처럼 스로틀을 뺀다 (`descend`). 위치 유지는 계속.
+- **센서 없음 / 무효 / 지연** → 그 즉시 기존 개루프(트림, 영상 고도 보조)로 돌아간다. HUD 와 상태 줄에
+  `alt 0.82m -> 0.80m` (녹색 = 홀드 중, 빨강 = 센서 무효) 와 `v +0.03/-0.01 m/s` 가 표시되고, `frames.jsonl` 의 `hold` 에 기록된다.
+
+> **현재 한계**: PC↔FC 다운링크가 USB 뿐이라 센서 홀드는 **프롭 제거 벤치 / 테더 상태**에서만 쓸 수 있다.
+> 비행 중 사용은 ELRS 텔레메트리 경로가 생긴 뒤의 일이다 ([plan.md](plan.md) Phase 9). 왕복 지연이 길어지면
+> `alt_kd` 를 낮추고 `sensor_timeout_s` 를 늘려야 한다.
+
+벤치 순서: ① `mtf02p_monitor.py --check` 로 거리·플로우 부호 확인 → `flow_invert_x/y` ② UI 에서 `--msp COMx` 로 연결,
+STANDBY 에서 상태 줄에 `alt` 가 보이는지 ③ 프롭 제거·ARM 후 HOVER, 기체를 손으로 올리면 스로틀 µs 가 내려가고
+내리면 올라가는지 (반대면 `invert_throttle`) ④ 기체를 옆으로 밀면 roll 스틱이 반대로 가는지.
+
 ## 세션 기록과 분석 (디버깅 구조)
 
 **카메라가 연결되면 곧바로 자동 기록**이 시작된다 (`--auto-session always`, 기본). 조종기로 수동 이륙하는 구간과
@@ -296,4 +338,5 @@ python -m pytest tests -q
 ```
 
 PID, 트래커, 컨트롤러 부호/한계/트림 학습/offset 모드, 상태 전이/LOST 하강, 스로틀 슬루, RF-DETR 디코딩,
-세션 기록·리포트·리플레이는 하드웨어·모델 없이 검증된다.
+세션 기록·리포트·리플레이, MSP 시리얼 프레이밍(가짜 포트)·센서 페이로드 파싱, 센서 홀드(고도 PID 부호, 위치 유지,
+무효/지연 시 개루프 복귀, LOST 목표 고도 하강)는 하드웨어·모델 없이 검증된다.

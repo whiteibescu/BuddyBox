@@ -103,6 +103,20 @@ def draw_hud(frame, tele):
             line += f"  descend -{desc:.3f}"
         _text(frame, line, (12, y), fs, C_YELLOW if desc else C_WHITE)
         y += line_h
+    hold = tele.get("hold") or {}
+    if hold.get("sensor"):
+        alt = hold.get("alt_m")
+        line = f"alt {alt:.2f}m" if alt is not None else "alt ---"
+        if hold.get("alt_hold"):
+            line += f" -> {hold.get('alt_target_m', 0.0):.2f}m"
+            if tele.get("descend_m"):
+                line += f" (down {tele['descend_m']:.2f})"
+        line += f"  v {hold.get('vx', 0.0):+.2f}/{hold.get('vy', 0.0):+.2f} m/s"
+        if hold.get("pos_hold"):
+            line += "  POS"
+        color = C_GREEN if hold.get("alt_hold") else (C_WHITE if hold.get("sensor_ok") else C_RED)
+        _text(frame, line, (12, y), fs, color)
+        y += line_h
     us = tele.get("channels_us")
     if us:
         _text(frame, "us " + " ".join(str(v) for v in us[:5]), (12, y), fs * 0.9, C_GRAY)

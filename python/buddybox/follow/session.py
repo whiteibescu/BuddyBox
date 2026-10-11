@@ -133,6 +133,9 @@ class Session:
             "trim": round(tele.get("trim", 0.0), 4),
             "trim_offset": round(tele.get("trim_offset", 0.0), 4),
             "descend": round(tele.get("descend", 0.0), 4),
+            "descend_m": round(tele.get("descend_m", 0.0), 3),
+            "hold": {k: (round(v, 4) if isinstance(v, float) else v) for k, v in tele["hold"].items()}
+            if tele.get("hold") else None,
         }
         self._frames.write(json.dumps(rec, ensure_ascii=False) + "\n")
         self.steps += 1

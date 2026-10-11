@@ -63,8 +63,8 @@ from buddybox.follow.state import Mode
 from buddybox.vision.capture import (PRESETS, VIDEO_SUFFIXES, VRX_DEVICE_NAME, device_names,
                                      open_source, probe_devices)
 from person_follow import (AUTO_SESSION_LABELS, COMBOS, FROZEN, PID_TAB, REPORT_TOOL, TOGGLES,
-                           TRIM_TAB, make_arm_verifier, make_backend, make_detector, parse_args,
-                           serial_ports)
+                           TRIM_TAB, make_arm_verifier, make_backend, make_detector, make_sensor_poller,
+                           parse_args, serial_ports)
 
 # ── 테마 ──────────────────────────────────────────────────────────────────────
 
@@ -774,7 +774,8 @@ class MainWindow(QMainWindow):
         if self.source is None or self.backend is None or self.pipeline is not None:
             return
         self._ensure_detector()
-        verifier = make_arm_verifier(self.port_box.currentText(), self.args.sitl_host)
+        verifier = make_arm_verifier(self.port_box.currentText(), self.args.sitl_host, self.args.msp)
+        sensor = make_sensor_poller(verifier, hz=self.args.sensor_hz)
         self.pipeline = FollowPipeline(self.source, self.detector, self.backend, self.cfg,
                                        conf=self.args.conf, every=self.args.every,
                                        label="marker" if self.args.detector == "aruco" else "person",
@@ -782,9 +783,12 @@ class MainWindow(QMainWindow):
                                        auto_session=self.auto_session_mode(),
                                        annotated_video=self.args.annotated_video,
                                        session_max_s=max(30.0, self.args.session_split_min * 60.0),
-                                       arm_verifier=verifier, arm_channel=self.arm_ch.value() - 1)
+                                       arm_verifier=verifier, arm_channel=self.arm_ch.value() - 1,
+                                       sensor=sensor)
         self.pipeline.start()
         self.set_mode(Mode.STANDBY)
+        if sensor is not None:
+            self.info(f"MSP {verifier.description} — MTF-02P 센서 폴링 {self.args.sensor_hz:g} Hz")
         free = self.pipeline.free_gb()
         if free is not None:
             self.info(f"세션 기록: {self.auto_session_box.currentText()} · 저장 폴더 여유 {free:.1f} GB")
@@ -1097,6 +1101,19 @@ class MainWindow(QMainWindow):
             if tele.get("descend"):
                 text += f"descend -{tele['descend']:.3f}  "
             text += f"motion {tele.get('motion', 0.0):.3f}"
+            hold = tele.get("hold") or {}
+            if hold.get("sensor"):
+                alt = hold.get("alt_m")
+                text += "\nalt " + (f"{alt:.2f} m" if alt is not None else "---")
+                if hold.get("alt_hold"):
+                    text += f" → {hold.get('alt_target_m', 0.0):.2f} m HOLD"
+                    if tele.get("descend_m"):
+                        text += f" (↓{tele['descend_m']:.2f})"
+                elif not hold.get("sensor_ok"):
+                    text += " (센서 무효/지연)"
+                text += f"  v {hold.get('vx', 0.0):+.2f}/{hold.get('vy', 0.0):+.2f} m/s"
+                if hold.get("pos_hold"):
+                    text += " POS"
             self.trim_label.setText(text)
         self._refresh_arm(tele.get("arm") or {})
         rec = tele.get("rec")

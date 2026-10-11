@@ -169,7 +169,25 @@ batch end
 
 - 제어 입력으로는 debug[4]/[5] 또는 [6]/[7] (회전 성분 제거된 실제 이동 흐름)
 - 2026.6의 `MSP2_CLI_SETTING`(0x3010, 2026.6.2 `msp_protocol_v2_betaflight.h` 기준)으로 PC에서 CLI 설정값을 직접 읽고 쓸 수 있다.
-- **벤치**: USB 연결로 바로 판독 가능 → 판독 코드부터 작성
+- **벤치**: USB 연결로 바로 판독 가능 → 판독 코드 작성 완료 (아래)
+
+### 구현 (python/)
+
+| 모듈 | 역할 |
+|---|---|
+| `buddybox/msp.py` | `MspSerial`(USB-VCP) · `MspClient`(SITL TCP) 공용 API — `sonar_altitude_m()`, `debug()`, `attitude()`, `altitude()`. `open_msp("COM7" / "sitl")` |
+| `buddybox/follow/sensors.py` | `SensorPoller`: 백그라운드 폴링(기본 20 Hz) → `RangeFlowSample(alt_m, flow_x/y rad/s, vx/vy m/s)`. 속도 = 플로우 × 고도 |
+| `buddybox/follow/hover.py` | `HoverHold`: 고도 PID(목표 m → 스로틀 Δ) + 위치 유지(속도 Kv + 드리프트 적분 Kp → roll/pitch) |
+| `tools/mtf02p_monitor.py` | 벤치 모니터. `python tools/mtf02p_monitor.py COM7 --check` 로 장착 방향 확인 |
+
+```
+python tools/mtf02p_monitor.py COM7 --hz 20 --raw        # 거리·플로우 실시간
+python examples/person_follow.py --port COM5 --msp COM7  # Pro Micro + FC USB (벤치, 프롭 제거)
+```
+
+`--msp COMx`를 주면 ARM 확인(MSP_STATUS)과 센서 폴링이 같은 포트를 공유한다.
+설정 `alt_hold`·`pos_hold`를 켜면 HOVER/LOST/FOLLOW에서 센서 홀드가 동작하고, 센서가 없거나
+무효(범위 밖·0.4 s 이상 지연)이면 자동으로 기존 개루프 트림으로 돌아간다 — [person-follow.md](person-follow.md#하방-센서-홀드-mtf-02p) 참고.
 - **비행 중**: 현재 체인(PC → Pro Micro PPM → TX15 → ELRS)은 업링크만 있다. 후보 다운링크:
 
 | 경로 | 비고 |
