@@ -124,3 +124,38 @@
 - **Q. PID 도 다시 세팅해야 할 것 같고, 전체적으로 디버깅할 수 있게 영상 프레임도 분석하기 좋은 구조로 만들 수 있나?**
   → STANDBY 를 벗어나면 세션 폴더(`recordings/session_*`)에 원본 영상 raw.mp4 + 제어 스텝별 frames.jsonl(검출 박스·트랙·오차·PID 출력·µs·트림) + events.jsonl + 설정/메타가 자동 기록되고, `tools/session_report.py`(요약 report.md, 프레임 격자 sheet.png, 시계열 plot.png, CSV)와 `tools/session_replay.py`(같은 검출 입력에 다른 PID 설정을 개루프로 다시 돌려 비교)로 비행 없이도 분석·재튜닝할 수 있다.
 
+## 2026-10-11 (MTF-02P 하방 센서)
+
+- **Q. 커넥터 실크가 GVRT이고 선이 검정·빨강·노랑·초록 순이면 어떻게 연결하나?**
+  → 검정 G→G, 빨강 V→5V, 노랑 R(센서 RX)→T2, 초록 T(센서 TX)→R2로 TX/RX를 교차 연결한다.
+
+- **Q. 인두를 플럭스 통에 담가도 되나?**
+  → 플럭스가 오염되고 패드에 닿기 전에 타버리므로, 플럭스는 패드·선에 직접 바르고 팁 관리는 황동 수세미·팁 티너로 한다.
+
+- **Q. `serialpassthrough 1 115200`이 `Invalid port`로 실패하는 이유는?**
+  → 이 Betaflight 버전은 포트를 이름으로 받으므로 `serialpassthrough UART2 115200`으로 입력해야 한다.
+
+- **Q. serialpassthrough는 무엇을 하는 명령인가?**
+  → FC가 USB와 UART2 사이 바이트를 해석 없이 그대로 넘기게 해서 PC 툴이 센서와 직접 통신하게 하는 임시 모드이며, 전원을 껐다 켜면 원래대로 돌아온다.
+
+- **Q. MicoAssistant 로그에 `ERROR IN input: UNKNOWN COMMAND`가 반복되는 건 왜인가?**
+  → passthrough가 걸리지 않아 MicoAssistant의 식별 요청에 Betaflight CLI가 응답하고 있는 것이다.
+
+- **Q. 플래싱하면 설정을 다시 넣어야 하나?**
+  → 플래싱은 설정을 기본값으로 초기화하므로 ARM 스위치·보드 방향·PID 등을 백업 파일로 반드시 복구해야 한다.
+
+- **Q. 설정을 다 했는데 Sonar 토글이 안 켜지고 tasks에 RANGEFINDER가 없는 이유는?**
+  → 2025.12.x는 빌드 옵션을 켜도 MicoAir용 MT 드라이버가 포함되지 않아 센서가 감지되지 않으며, 2026.6.2로 올려 해결했다(betaflight-configurator #5058).
+
+- **Q. Sonar는 정확히 무엇인가?**
+  → 레인지파인더가 측정한 바닥까지 거리를 기울기 보정한 고도(cm)로, 초음파 센서 시절 이름이 남은 것이다.
+
+- **Q. 옵티컬 플로우는 왜 Debug 모드로 보나?**
+  → Configurator의 실시간 그래프에 옵티컬 플로우 전용 항목이 없어서 `debug_mode = OPTICALFLOW`로 Debug 그래프에 띄운다.
+
+- **Q. MTF-02P 장착 방향이 있나?**
+  → 렌즈 면은 반드시 바닥을 향해야 하고, 앞뒤 방향은 `opticalflow_rotation`·`opticalflow_flip_x`로 보정할 수 있다.
+
+- **Q. 비행 중 센서 값을 PC로 받으려면? (Walksnail 사용 시)**
+  → Walksnail 링크는 OSD 표시용이라 부적합하고, ELRS 텔레메트리로 MSP 요청·응답을 TX15 USB를 거쳐 받는 경로가 현실적이다.
+

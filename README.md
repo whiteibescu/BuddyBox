@@ -39,6 +39,8 @@ PC는 스틱 4채널(Roll/Pitch/Yaw/Throttle)만 제어하고, **ARM·모드 스
 | [docs/betaflight-verify.md](docs/betaflight-verify.md) | Phase 5 Betaflight 검증 절차 (props off) |
 | [docs/sitl-gazebo.md](docs/sitl-gazebo.md) | Betaflight SITL + Gazebo 시뮬레이션 (sim-to-real) |
 | [docs/person-follow.md](docs/person-follow.md) | Meteor75 Pro 2 사람 추적·호버링 (VRX Pro 캡처 노하우, 제어 로직, 운용 절차) |
+| [docs/mtf02p-sensor.md](docs/mtf02p-sensor.md) | MTF-02P 하방 센서(옵티컬 플로우 + 거리) 배선·Betaflight 2026.6.2 설정·MSP 판독 |
+| [configs/betaflight/](configs/betaflight/) | Meteor75 Pro 2 Betaflight 설정 백업·복구 파일 |
 | [docs/plan.md](docs/plan.md) | 프로젝트 계획 & 진행 상황 |
 | [docs/qna.md](docs/qna.md) | 질문 & 답변 로그 |
 
