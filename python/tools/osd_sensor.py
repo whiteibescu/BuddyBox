@@ -37,13 +37,18 @@ def main():
     ap.add_argument("--invert-x", action="store_true")
     ap.add_argument("--invert-y", action="store_true")
     ap.add_argument("--every", type=int, default=1, help="N 프레임마다 판독")
+    ap.add_argument("--rf-pos", default=None, help="RF 요소 칸 col,row (글리프 파일 값 덮어쓰기)")
+    ap.add_argument("--d2-pos", default=None, help="D2 요소 칸 col,row (글리프 파일 값 덮어쓰기)")
     args = ap.parse_args()
 
     spec = args.video or args.camera
     if spec is None:
         ap.error("--camera 또는 --video 가 필요합니다")
     source = open_source(spec, preset=args.preset, backend=args.cap_backend, loop=False)
-    reader = OsdReader(GlyphBook.load(args.glyphs))
+    book = GlyphBook.load(args.glyphs)
+    book.set_positions(tuple(int(v) for v in args.rf_pos.split(",")) if args.rf_pos else None,
+                       tuple(int(v) for v in args.d2_pos.split(",")) if args.d2_pos else None)
+    reader = OsdReader(book)
     sensor = OsdSensorSource(reader, invert_x=args.invert_x, invert_y=args.invert_y, every=args.every)
 
     writer = fh = None
@@ -52,6 +57,7 @@ def main():
         writer = csv.writer(fh)
         writer.writerow(["t", "frame", "alt_m", "flow_x", "flow_y", "vx", "vy", "rf_text", "d2_text", "ok"])
 
+    source.wait_first(timeout=15.0)
     t0 = time.monotonic()
     last_seq = -1
     frames = ok = 0
@@ -65,6 +71,8 @@ def main():
                 time.sleep(0.005)
                 continue
             if seq == last_seq:
+                if args.video and not source.thread.is_alive():
+                    break                                  # 영상 끝
                 time.sleep(0.002)
                 continue
             last_seq = seq
@@ -78,7 +86,7 @@ def main():
                 if frames % max(1, args.every) == 0 and (args.video or frames % 5 == 0):
                     print(f"{now - t0:7.2f} {alt} {s.flow_x:+7.3f} {s.flow_y:+7.3f} {s.vx:+6.2f} {s.vy:+6.2f}"
                           f"   {r.rf_text!r} {r.d2_text!r}")
-            elif r is not None and frames % 30 == 0:
+            elif r is not None and r.error and frames % 30 == 0:
                 print(f"{now - t0:7.2f}  판독 실패: {r.rf_text!r} {r.d2_text!r}  ({r.error})")
             if writer and r is not None:
                 writer.writerow([round(now - t0, 3), seq,
@@ -92,12 +100,14 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        source.close()
+        source.release()
         if fh:
             fh.close()
         if args.show:
             cv2.destroyAllWindows()
-    print(f"\n프레임 {frames}, 판독 성공 {ok} ({100.0 * ok / max(1, frames):.0f}%), 오류 {sensor.errors}")
+    tried = ok + sensor.errors
+    print()
+    print(f"프레임 {frames}, 판독 시도 {tried}, 성공 {ok} ({100.0 * ok / max(1, tried):.0f}%), 실패 {sensor.errors}")
     return 0
 
 

@@ -17,7 +17,7 @@ echo   [6] Print Betaflight CLI lines (osd_*_pos)
 echo   [0] Quit
 echo.
 set /p CH=Select:
-if "%CH%"=="1" %PY% tools\osd_calibrate.py %CAM% --show --no-fit & goto menu
+if "%CH%"=="1" %PY% tools\osd_calibrate.py %CAM% --show & goto menu
 if "%CH%"=="2" (
     set /p COM=FC USB port (e.g. COM7):
     %PY% tools\osd_calibrate.py %CAM% --msp %COM% --out %GLYPHS% --show

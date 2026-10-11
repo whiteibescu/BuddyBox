@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from buddybox.msp import open_msp  # noqa: E402
 from buddybox.vision.capture import PRESETS, default_backend, open_source  # noqa: E402
 from buddybox.vision.osd import (DEFAULT_D2, DEFAULT_RF, GlyphBook, OsdGrid, OsdReader, d2_text,  # noqa: E402
-                                 element_cells, fit_grid, osd_pos, rf_text, text_mask)
+                                 element_cells, fit_grid_points, grid_points, osd_pos, rf_text, text_mask)
 
 
 def parse_grid(spec):
@@ -47,18 +47,26 @@ def main():
     ap.add_argument("--cap-backend", default=default_backend())
     ap.add_argument("--msp", default="", help="FC USB 포트 (정답값). 없으면 --show 만 가능")
     ap.add_argument("--grid", default="", help="x0,y0,cell_w,cell_h 픽셀 (기본: 프레임을 53×20 등분)")
-    ap.add_argument("--no-fit", action="store_true", help="RF 라벨 기반 격자 자동 미세조정 끄기")
+    ap.add_argument("--fit", action="store_true",
+                    help="RF 라벨 기반 격자 자동 미세조정 (기본 꺼짐 — Walksnail 1080p 는 기본 53×20 등분이 정확함)")
     ap.add_argument("--out", default="osd_glyphs.json")
     ap.add_argument("--seconds", type=float, default=60.0, help="학습 시간")
     ap.add_argument("--show", action="store_true", help="격자·판독 결과를 창에 표시")
     ap.add_argument("--dump", default=None, help="셀 크롭 PNG 를 저장할 폴더 (디버깅)")
     ap.add_argument("--pos", action="store_true", help="CLI 위치값만 출력하고 종료")
+    ap.add_argument("--rf-pos", default=None, help="RF 요소 칸 col,row (기본 1,18). Betaflight osd_lidar_dist_pos 와 같은 칸")
+    ap.add_argument("--d2-pos", default=None, help="D2 요소 칸 col,row (기본 10,18). osd_debug2_pos 와 같은 칸")
     args = ap.parse_args()
 
+    rf_pos = tuple(int(v) for v in args.rf_pos.split(",")) if args.rf_pos else None
+    d2_pos = tuple(int(v) for v in args.d2_pos.split(",")) if args.d2_pos else None
     if args.pos:
-        print(f"set osd_lidar_dist_pos = {osd_pos(DEFAULT_RF.col, DEFAULT_RF.row)}   # RF (col {DEFAULT_RF.col}, row {DEFAULT_RF.row})")
-        print(f"set osd_debug2_pos = {osd_pos(DEFAULT_D2.col, DEFAULT_D2.row)}       # D2 (col {DEFAULT_D2.col}, row {DEFAULT_D2.row})")
+        rc, rr = rf_pos or (DEFAULT_RF.col, DEFAULT_RF.row)
+        dc, dr = d2_pos or (DEFAULT_D2.col, DEFAULT_D2.row)
+        print(f"set osd_lidar_dist_pos = {osd_pos(rc, rr)}   # RF (col {rc}, row {rr})")
+        print(f"set osd_debug2_pos = {osd_pos(dc, dr)}       # D2 (col {dc}, row {dr})")
         print("set debug_mode = OPTICALFLOW")
+        print("# 맨 아래 두 행(18, 19)은 Walksnail 자체 상태 표시와 겹칠 수 있으니 가능하면 피한다")
         return 0
 
     src_spec = args.video or args.camera
@@ -69,33 +77,37 @@ def main():
     if client is None and not args.show:
         ap.error("--msp 없이 학습할 수 없습니다. 격자만 보려면 --show")
 
-    book = GlyphBook(grid=parse_grid(args.grid))
+    book = GlyphBook(grid=parse_grid(args.grid)).set_positions(rf_pos, d2_pos)
     reader = OsdReader(book)
     fitted = False
+    grid_pts = []
     t0 = time.monotonic()
     n = 0
     stats = {"frames": 0, "learned": 0, "rf_ok": 0, "d2_ok": 0, "msp_err": 0}
     last_seq = -1
     if args.dump:
         os.makedirs(args.dump, exist_ok=True)
+    source.wait_first(timeout=15.0)
     print("학습 시작 — Ctrl+C / q 로 종료")
     try:
         while time.monotonic() - t0 < args.seconds:
             frame, seq = source.read()
             if frame is None or seq == last_seq:
-                if args.video and frame is None:
-                    break
+                if args.video and (frame is None or not source.thread.is_alive()):
+                    break                                  # 영상 끝
                 time.sleep(0.005)
                 continue
             last_seq = seq
             stats["frames"] += 1
             mask = text_mask(frame)
             H, W = mask.shape[:2]
-            if not fitted and not args.no_fit:
-                book.grid, score = fit_grid(mask, book.grid)
-                fitted = True
-                g = book.grid
-                print(f"격자: x0 {g.x0:.1f} y0 {g.y0:.1f} cell {g.cell_w:.2f}×{g.cell_h:.2f}  (score {score:.2f})")
+            if not fitted and args.fit:
+                grid_pts += grid_points(mask, book.grid)
+                if len(grid_pts) >= 60:
+                    book.grid, npts, rms = fit_grid_points(grid_pts, book.grid.resolved(W, H))
+                    fitted = True
+                    g = book.grid
+                    print(f"격자 추정: x0 {g.x0:.1f} cell {g.cell_w:.3f}×{g.cell_h:.1f}  (점 {npts}, rms {rms if rms is None else round(rms, 2)} px)")
 
             truth = None
             if client is not None:
@@ -110,7 +122,7 @@ def main():
                         print(f"MSP 오류: {exc}")
 
             if truth is not None:
-                for elem, text in ((DEFAULT_RF, truth[0]), (DEFAULT_D2, truth[1])):
+                for elem, text in ((book.rf, truth[0]), (book.d2, truth[1])):
                     cells = element_cells(mask, book.grid, elem)
                     for i, (cell, ch) in enumerate(zip(cells, text)):
                         book.learn(cell, ch)
@@ -139,7 +151,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        source.close()
+        source.release()
         if client is not None:
             client.close()
         if args.show:

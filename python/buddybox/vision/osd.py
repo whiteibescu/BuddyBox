@@ -5,7 +5,7 @@
 
 Betaflight 2026.6.2 OSD 요소 (osd_elements.c):
     OSD_LIDAR_DIST  "RF:%3d"                 rangefinderGetLatestAltitude() cm, 무효 = "RF:---"
-    OSD_DEBUG2      "D2 %5d %5d %5d %5d"     debug[4..7]  (debug_mode = OPTICALFLOW:
+    OSD_DEBUG2      "D2  %5d %5d %5d %5d"    debug[4..7]  (debug_mode = OPTICALFLOW:
                                              [4],[5] 회전 제거 플로우 X,Y  [6],[7] 필터링 X,Y, 0.001 rad/s)
 
 HD 캔버스는 53×20 셀. 기본 격자는 프레임 전체를 53×20 으로 등분한 것이며, VRX 출력이
@@ -67,12 +67,12 @@ class OsdElement:
 
 
 RF_LEN = 6                       # "RF:%3d"
-D2_LEN = 2 + 4 * 6               # "D2 %5d %5d %5d %5d"
+D2_LEN = 4 + 5 + 3 * 6           # "D2  %5d %5d %5d %5d" (D2 뒤 공백 2칸, 27자)
 DEFAULT_RF = OsdElement("rf", 1, 18, RF_LEN, r"RF:\s*(-{3}|-?\d{1,3})")
 DEFAULT_D2 = OsdElement("d2", 10, 18, D2_LEN, r"D2\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)")
 
 RF_FMT = "RF:{:3d}"
-D2_FMT = "D2 {:5d} {:5d} {:5d} {:5d}"
+D2_FMT = "D2  {:5d} {:5d} {:5d} {:5d}"
 
 
 def rf_text(cm):
@@ -136,10 +136,10 @@ class OsdGrid:
 
 # ---- 이진화 / 셀 추출 ----
 
-_OUTLINE_KERNEL = np.ones((7, 7), np.uint8)
+_OUTLINE_KERNEL = np.ones((19, 19), np.uint8)   # 외곽선에서 9px 이내 (Walksnail 1080p 획 두께 8~12px)
 
 
-def text_mask(bgr, min_gray=190, max_sat=70, outline_gray=70):
+def text_mask(bgr, min_gray=170, max_sat=80, outline_gray=80):
     """OSD 흰 글자 마스크.
 
     흰색(밝고 채도 낮음)이면서 **검은 외곽선 근처**인 픽셀만 남긴다 — OSD 글자는 항상 검은 테두리를
@@ -152,20 +152,91 @@ def text_mask(bgr, min_gray=190, max_sat=70, outline_gray=70):
     return white & near_dark
 
 
-def cell_crop(mask, box):
+CELL_MARGIN = 0.3        # 셀 좌우로 더 보는 비율 (격자 오차·글자 밀림 흡수)
+CELL_V_CORE = 0.82       # 셀 세로 중 글자로 보는 비율 — 아래쪽은 Walksnail 자체 상태 표시가 침범함
+MIN_GLYPH_PX = 0.01      # 셀 면적 대비 최소 잉크 (이보다 작으면 공백)
+
+
+def _ink_runs(profile):
+    runs, start = [], None
+    for i, on in enumerate(profile):
+        if on and start is None:
+            start = i
+        elif not on and start is not None:
+            runs.append((start, i))
+            start = None
+    if start is not None:
+        runs.append((start, len(profile)))
+    return runs
+
+
+def glyph_from_cell(mask, box, margin=CELL_MARGIN):
+    """셀 상자(+여유)에서 글자 하나를 찾아 **경계상자 기준으로 정규화**한 템플릿 이미지를 돌려준다.
+
+    반환: (glyph (TEMPLATE_H, TEMPLATE_W) float32, ink, center_x)
+      ink      = 글자 픽셀 수 / 셀 면적 (0 = 공백)
+      center_x = 글자 중심의 프레임 x 좌표 (격자 피치 추정용), 공백이면 None
+    글자 위치가 셀 안에서 몇 px 밀려도 같은 결과가 나오도록 한다.
+    """
     x, y, w, h = box
     H, W = mask.shape[:2]
-    x0, y0 = max(0, x), max(0, y)
-    x1, y1 = min(W, x + w), min(H, y + h)
-    if x1 <= x0 or y1 <= y0:
-        return np.zeros((TEMPLATE_H, TEMPLATE_W), np.float32)
-    crop = mask[y0:y1, x0:x1]
-    return cv2.resize(crop.astype(np.float32), (TEMPLATE_W, TEMPLATE_H), interpolation=cv2.INTER_AREA)
+    mx = int(round(w * margin))
+    cx0, cx1 = max(0, x - mx), min(W, x + w + mx)
+    cy0, cy1 = max(0, y), min(H, y + int(round(h * CELL_V_CORE)))
+    blank = np.zeros((TEMPLATE_H, TEMPLATE_W), np.float32)
+    if cx1 <= cx0 or cy1 <= cy0:
+        return blank, 0.0, None
+    crop = mask[cy0:cy1, cx0:cx1]
+    col_ink = crop.sum(axis=0)
+    runs = _ink_runs(col_ink > 0)
+    # 글자 사이 1~2px 끊김은 이어 붙인다
+    merged = []
+    for r in runs:
+        if merged and r[0] - merged[-1][1] <= 2:
+            merged[-1] = (merged[-1][0], r[1])
+        else:
+            merged.append(r)
+    core0, core1 = x - cx0, x - cx0 + w          # 원래 셀 구간 (크롭 좌표)
+    best, best_ov = None, 0
+    for r0, r1 in merged:
+        center = (r0 + r1) / 2.0
+        if not (core0 - 2 <= center < core1 + 2):
+            continue                              # 중심이 셀 밖이면 이웃 글자의 침범
+        ov = min(r1, core1) - max(r0, core0)
+        if ov > best_ov:
+            best, best_ov = (r0, r1), ov
+    if best is None:
+        return blank, 0.0, None
+    r0, r1 = best
+    sub = crop[:, r0:r1]
+    rows = np.where(sub.sum(axis=1) > 0)[0]
+    if rows.size == 0:
+        return blank, 0.0, None
+    ink_px = int(sub.sum())
+    ink = ink_px / float(w * h)
+    if ink < MIN_GLYPH_PX:
+        return blank, ink, None
+    g = sub[rows.min():rows.max() + 1].astype(np.float32)
+    gh, gw = g.shape
+    # 종횡비 유지해 템플릿 캔버스 중앙에 배치
+    scale = min(TEMPLATE_W / gw, TEMPLATE_H / gh)
+    nw, nh = max(1, int(round(gw * scale))), max(1, int(round(gh * scale)))
+    g = cv2.resize(g, (nw, nh), interpolation=cv2.INTER_AREA)
+    out = blank.copy()
+    ox, oy = (TEMPLATE_W - nw) // 2, (TEMPLATE_H - nh) // 2
+    out[oy:oy + nh, ox:ox + nw] = g
+    return out, ink, cx0 + (r0 + r1) / 2.0
+
+
+def element_glyphs(mask, grid, elem):
+    """요소의 각 셀 → (glyph, ink, center_x) 목록."""
+    H, W = mask.shape[:2]
+    return [glyph_from_cell(mask, grid.cell_box(elem.col + i, elem.row, W, H)) for i in range(elem.length)]
 
 
 def element_cells(mask, grid, elem):
-    H, W = mask.shape[:2]
-    return [cell_crop(mask, grid.cell_box(elem.col + i, elem.row, W, H)) for i in range(elem.length)]
+    """요소의 각 셀 → 정규화된 글리프 이미지 목록 (공백은 0 이미지)."""
+    return [g for g, _, _ in element_glyphs(mask, grid, elem)]
 
 
 # ---- 글리프 템플릿 ----
@@ -175,8 +246,18 @@ class GlyphBook:
     templates: dict = field(default_factory=dict)   # char → (H, W) float32 [0,1]
     counts: dict = field(default_factory=dict)
     grid: OsdGrid = field(default_factory=OsdGrid)
+    rf: OsdElement = field(default_factory=lambda: OsdElement(**DEFAULT_RF.__dict__))
+    d2: OsdElement = field(default_factory=lambda: OsdElement(**DEFAULT_D2.__dict__))
     blank_ink: float = 0.006      # 셀 잉크 비율이 이보다 작으면 공백 ('-' 는 약 0.02~0.03)
     min_score: float = 0.55
+
+    def set_positions(self, rf_pos=None, d2_pos=None):
+        """(col, row) 로 요소 위치를 바꾼다 (Betaflight 의 osd_*_pos 와 같은 칸)."""
+        if rf_pos is not None:
+            self.rf.col, self.rf.row = int(rf_pos[0]), int(rf_pos[1])
+        if d2_pos is not None:
+            self.d2.col, self.d2.row = int(d2_pos[0]), int(d2_pos[1])
+        return self
 
     def learn(self, cell, ch):
         if ch == " ":
@@ -187,8 +268,8 @@ class GlyphBook:
         self.counts[ch] = n + 1
 
     def classify(self, cell):
-        """→ (char, score). 잉크가 거의 없으면 ' '. 템플릿과 상관이 낮으면 '?'."""
-        if float(cell.mean()) < self.blank_ink:
+        """→ (char, score). 잉크가 없으면(공백 글리프) ' '. 템플릿과 상관이 낮으면 '?'."""
+        if float(cell.max()) <= 0.0 or float(cell.mean()) < self.blank_ink:
             return " ", 1.0
         best, best_s = "?", -1.0
         a = cell - cell.mean()
@@ -216,6 +297,8 @@ class GlyphBook:
         data = {
             "template_size": [TEMPLATE_W, TEMPLATE_H],
             "grid": self.grid.to_dict(),
+            "rf_pos": [self.rf.col, self.rf.row],
+            "d2_pos": [self.d2.col, self.d2.row],
             "blank_ink": self.blank_ink,
             "min_score": self.min_score,
             "counts": self.counts,
@@ -229,6 +312,7 @@ class GlyphBook:
         d = json.loads(Path(path).read_text(encoding="utf-8"))
         book = cls(grid=OsdGrid.from_dict(d.get("grid", {})),
                    blank_ink=d.get("blank_ink", 0.006), min_score=d.get("min_score", 0.55))
+        book.set_positions(d.get("rf_pos"), d.get("d2_pos"))
         book.counts = dict(d.get("counts", {}))
         book.templates = {ch: np.asarray(t, np.float32) for ch, t in d.get("templates", {}).items()}
         return book
@@ -257,10 +341,10 @@ class OsdReading:
 
 
 class OsdReader:
-    def __init__(self, book, rf=DEFAULT_RF, d2=DEFAULT_D2):
+    def __init__(self, book, rf=None, d2=None):
         self.book = book
-        self.rf = rf
-        self.d2 = d2
+        self.rf = rf or book.rf
+        self.d2 = d2 or book.d2
 
     @property
     def grid(self):
@@ -294,29 +378,36 @@ class OsdReader:
         return frame
 
 
-def fit_grid(mask, grid, elem=DEFAULT_RF, shifts=(-0.5, 0.5, 0.05), scales=(0.9, 1.1, 0.01)):
-    """RF 요소의 라벨('RF:')이 항상 있다는 점을 이용해 격자 원점·배율을 미세 조정한다.
+def estimate_grid(mask, grid, elems=(DEFAULT_RF, DEFAULT_D2), min_points=6):
+    """글자 중심 x 를 열 번호에 회귀시켜 실제 셀 피치·원점을 추정한다.
 
-    후보 격자마다 라벨 3셀 안의 잉크 비율에서 셀 경계 띠의 잉크를 뺀 점수를 매겨 최댓값을 고른다.
+    여러 프레임의 마스크를 누적하려면 (x, col) 점을 모아 fit_grid_points 를 직접 쓴다.
+    반환: (OsdGrid, points_used, rms_px). 점이 부족하면 입력 격자를 그대로 돌려준다.
     """
     H, W = mask.shape[:2]
-    base = grid.resolved(W, H)
-    best, best_s = base, -1.0
-    sx0, sx1, sstep = shifts
-    sc0, sc1, scstep = scales
-    for dx in np.arange(sx0, sx1 + 1e-9, sstep):
-        for sc in np.arange(sc0, sc1 + 1e-9, scstep):
-            g = OsdGrid(base.cols, base.rows, base.x0 + dx * base.cell_w, base.y0,
-                        base.cell_w * sc, base.cell_h)
-            score = 0.0
-            for i in range(3):
-                x, y, w, h = g.cell_box(elem.col + i, elem.row, W, H)
-                inner = mask[y:y + h, x + 2:x + w - 2]
-                edge = np.concatenate([mask[y:y + h, max(0, x - 1):x + 1].ravel(),
-                                       mask[y:y + h, x + w - 1:x + w + 1].ravel()])
-                if inner.size == 0:
-                    continue
-                score += float(inner.mean()) - 2.0 * (float(edge.mean()) if edge.size else 0.0)
-            if score > best_s:
-                best, best_s = g, score
-    return best, best_s
+    pts = grid_points(mask, grid, elems)
+    return fit_grid_points(pts, grid.resolved(W, H), min_points)
+
+
+def grid_points(mask, grid, elems=(DEFAULT_RF, DEFAULT_D2)):
+    """(col, center_x) 점 목록 — 글자가 있는 셀만."""
+    pts = []
+    for elem in elems:
+        for i, (_, ink, cx) in enumerate(element_glyphs(mask, grid, elem)):
+            if cx is not None:
+                pts.append((elem.col + i, cx))
+    return pts
+
+
+def fit_grid_points(pts, base, min_points=6):
+    if len(pts) < min_points:
+        return base, len(pts), None
+    cols = np.array([c for c, _ in pts], np.float64)
+    xs = np.array([x for _, x in pts], np.float64)
+    pitch, icpt = np.polyfit(cols, xs, 1)           # x_center = x0 + (col + 0.5) * pitch
+    if not (0.7 * base.cell_w <= pitch <= 1.3 * base.cell_w):
+        return base, len(pts), None
+    x0 = icpt - 0.5 * pitch
+    resid = xs - (icpt + pitch * cols)
+    rms = float(np.sqrt(np.mean(resid ** 2)))
+    return OsdGrid(base.cols, base.rows, float(x0), base.y0, float(pitch), base.cell_h), len(pts), rms

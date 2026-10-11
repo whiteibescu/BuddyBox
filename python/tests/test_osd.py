@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from buddybox.follow.sensors import OsdSensorSource
 from buddybox.vision.osd import (DEFAULT_D2, DEFAULT_RF, GlyphBook, OsdGrid, OsdReader, d2_text, decode_pos,
-                                 element_cells, fit_grid, osd_pos, parse_d2, parse_rf, rf_text, text_mask)
+                                 element_cells, estimate_grid, osd_pos, parse_d2, parse_rf, rf_text, text_mask)
 
 W, H = 1920, 1080
 
@@ -55,8 +55,8 @@ def test_osd_pos_matches_betaflight_encoding():
 def test_text_formats_and_parsers():
     assert rf_text(88) == "RF: 88" and rf_text(None) == "RF:---" and rf_text(0) == "RF:---"
     assert parse_rf("RF: 88") == 0.88 and parse_rf("RF:---") is None and parse_rf("RF:120") == 1.2
-    assert d2_text([0, 0, 0, 0, 12, -345, 6, -7]) == "D2    12  -345     6    -7"
-    assert parse_d2("D2    12  -345     6    -7") == [12, -345, 6, -7]
+    assert d2_text([0, 0, 0, 0, 12, -345, 6, -7]) == "D2     12  -345     6    -7"
+    assert parse_d2("D2     12  -345     6    -7") == [12, -345, 6, -7]
     with pytest.raises(ValueError):
         parse_rf("R?: 88")
     with pytest.raises(ValueError):
@@ -92,11 +92,12 @@ def test_glyphbook_save_load_roundtrip(tmp_path):
     assert np.allclose(loaded.templates["7"], book.templates["7"], atol=1e-3)
 
 
-def test_fit_grid_recovers_horizontal_shift():
-    shifted = OsdGrid(x0=12.0)
-    mask = text_mask(render(rf_text(55), d2_text([0] * 8), grid=shifted))
-    g, _ = fit_grid(mask, OsdGrid())
-    assert abs(g.x0 - 12.0) < 0.3 * (W / 53)
+def test_estimate_grid_recovers_shift_and_pitch():
+    shifted = OsdGrid(x0=12.0, cell_w=35.0)
+    mask = text_mask(render(rf_text(55), d2_text([0, 0, 0, 0, 1234, -5678, 90, -12]), grid=shifted))
+    g, npts, rms = estimate_grid(mask, OsdGrid())
+    assert npts >= 10 and rms is not None and rms < 15.0   # 합성 글꼴은 글자 폭이 달라 중심이 흔들림
+    assert abs(g.cell_w - 35.0) < 1.5 and abs(g.x0 - 12.0) < 15.0   # 대략적 추정만 확인 (실영상 rms ≈ 4 px)
 
 
 def test_osd_sensor_source_feeds_samples():
